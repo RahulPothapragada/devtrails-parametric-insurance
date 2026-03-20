@@ -6,7 +6,7 @@ from typing import Optional
 
 class Settings(BaseSettings):
     # App
-    APP_NAME: str = "GigShield"
+    APP_NAME: str = "FlowSecure"
     ENV: str = "development"
     DEBUG: bool = True
 

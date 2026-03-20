@@ -1,5 +1,5 @@
 """
-GigShield — AI-Powered Parametric Income Protection for Gig Workers
+FlowSecure — AI-Powered Parametric Income Protection for Gig Workers
 Main FastAPI Application
 """
 
@@ -19,15 +19,15 @@ async def lifespan(app: FastAPI):
     # Startup: Initialize trigger monitoring engine
     trigger_engine = TriggerEngine()
     trigger_engine.start()
-    print("🛡️  GigShield Trigger Engine started — monitoring 6 parametric triggers")
+    print("🛡️  FlowSecure Trigger Engine started — monitoring 6 parametric triggers")
     yield
     # Shutdown
     trigger_engine.stop()
-    print("🛡️  GigShield Trigger Engine stopped")
+    print("🛡️  FlowSecure Trigger Engine stopped")
 
 
 app = FastAPI(
-    title="GigShield API",
+    title="FlowSecure API",
     description=(
         "AI-Powered Parametric Income Protection Platform for Gig Delivery Workers. "
         "Predicts disruptions, optimizes rider earnings, and provides automatic "
@@ -60,7 +60,7 @@ app.include_router(admin.router, prefix="/api/admin", tags=["Admin Dashboard"])
 @app.get("/", tags=["Health"])
 async def root():
     return {
-        "name": "GigShield API",
+        "name": "FlowSecure API",
         "status": "running",
         "version": "1.0.0",
         "description": "AI-Powered Parametric Income Protection",

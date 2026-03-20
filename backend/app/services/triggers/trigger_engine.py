@@ -1,5 +1,5 @@
 """
-Trigger Engine — The Core Brain of GigShield.
+Trigger Engine — The Core Brain of FlowSecure.
 
 Monitors all 6 parametric triggers across all zones.
 When thresholds are breached, auto-initiates claims for affected riders.

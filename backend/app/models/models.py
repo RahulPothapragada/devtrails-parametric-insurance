@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM Models for GigShield."""
+"""SQLAlchemy ORM Models for FlowSecure."""
 
 from sqlalchemy import (
     Column, Integer, String, Float, Boolean, DateTime, Enum, ForeignKey, JSON, Text
