@@ -2,6 +2,8 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.0
 pydantic==2.9.0
+pydantic-settings==2.5.0
+email-validator==2.2.0
 python-dotenv==1.0.1
 
 # Database
@@ -25,6 +27,7 @@ scikit-learn==1.5.0
 pandas==2.2.0
 numpy==1.26.0
 networkx==3.3
+python-louvain==0.16
 scipy==1.14.0
 
 # Scheduling

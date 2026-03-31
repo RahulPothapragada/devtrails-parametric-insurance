@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
-import { CloudRain, Sun, Snowflake, AlertTriangle, CloudOff } from 'lucide-react';
+import { CloudRain, Sun, Snowflake, AlertTriangle, CloudOff, Zap, GitBranch, BookOpen } from 'lucide-react';
 import clsx from 'clsx';
 import Landing from './pages/Landing';
 import RiderDashboard from './pages/RiderDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import FraudDefense from './pages/FraudDefense';
+import Simulation from './pages/Simulation';
+import FraudGraphPage from './pages/FraudGraphPage';
+import StoryMode from './pages/StoryMode';
 import WeatherEffects, { type WeatherType } from './components/ui/WeatherEffects';
 
 function Navbar({ currentEffect, setEffect }: { currentEffect: WeatherType, setEffect: (e: WeatherType) => void }) {
@@ -36,7 +39,7 @@ function Navbar({ currentEffect, setEffect }: { currentEffect: WeatherType, setE
           </Link>
           
           {/* Demo Weather Toggle */}
-          <div className="hidden md:flex items-center gap-1 bg-white/5 border border-white/10 rounded-full p-1">
+          <div className="hidden lg:flex items-center gap-1 bg-white/5 border border-white/10 rounded-full p-1">
             {effects.map((ef) => (
               <button
                 key={ef.type}
@@ -54,15 +57,48 @@ function Navbar({ currentEffect, setEffect }: { currentEffect: WeatherType, setE
           </div>
         </div>
 
-        <div className="flex gap-6 items-center">
-          <Link to="/rider" className="text-sm font-medium text-gray-300 hover:text-white transition-colors">Rider</Link>
-          <Link to="/admin" className="text-sm font-medium text-gray-300 hover:text-white transition-colors">Admin</Link>
-          <Link to="/fraud" className="text-sm font-medium text-[#10a37f] hover:text-[#0ea5e9] transition-colors flex items-center gap-1">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10a37f] opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#10a37f]"></span>
-            </span>
-            Defense Core
+        <div className="flex gap-3 md:gap-5 items-center">
+          <Link
+            to="/simulate"
+            className={clsx(
+              "text-sm font-semibold transition-colors flex items-center gap-1.5 px-3 py-1.5 rounded-lg",
+              location.pathname === '/simulate'
+                ? "text-[#10a37f] bg-[#10a37f]/10"
+                : "text-[#10a37f] hover:text-[#0ea5e9] hover:bg-white/5"
+            )}
+          >
+            <Zap className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Simulate</span>
+          </Link>
+          <Link
+            to="/story"
+            className={clsx(
+              "text-sm font-medium transition-colors flex items-center gap-1.5",
+              location.pathname === '/story'
+                ? "text-white"
+                : "text-gray-300 hover:text-white"
+            )}
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Story</span>
+          </Link>
+          <Link
+            to="/graph"
+            className={clsx(
+              "text-sm font-medium transition-colors flex items-center gap-1.5",
+              location.pathname === '/graph'
+                ? "text-white"
+                : "text-gray-300 hover:text-white"
+            )}
+          >
+            <GitBranch className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Graph</span>
+          </Link>
+          <div className="w-px h-4 bg-white/10 hidden md:block" />
+          <Link to="/rider" className={clsx("text-sm font-medium transition-colors", location.pathname === '/rider' ? "text-white" : "text-gray-400 hover:text-white")}>Rider</Link>
+          <Link to="/admin" className={clsx("text-sm font-medium transition-colors", location.pathname === '/admin' ? "text-white" : "text-gray-400 hover:text-white")}>Admin</Link>
+          <Link to="/fraud" className={clsx("text-sm font-medium transition-colors", location.pathname === '/fraud' ? "text-white" : "text-gray-400 hover:text-white")}>
+            Defense
           </Link>
         </div>
       </div>
@@ -79,6 +115,9 @@ function AnimatedRoutes() {
         <Route path="/rider" element={<RiderDashboard />} />
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/fraud" element={<FraudDefense />} />
+        <Route path="/simulate" element={<Simulation />} />
+        <Route path="/graph" element={<FraudGraphPage />} />
+        <Route path="/story" element={<StoryMode />} />
       </Routes>
     </AnimatePresence>
   );

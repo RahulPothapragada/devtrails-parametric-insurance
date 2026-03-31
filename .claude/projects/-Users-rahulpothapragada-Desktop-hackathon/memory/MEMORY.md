@@ -1,0 +1,2 @@
+- [User Profile](user_profile.md) — Hackathon team lead, FlowSecure parametric insurance project
+- [Project Phase 2](project_phase2.md) — Phase 1 got 5 stars, now building Phase 2 prototype with 4-person team

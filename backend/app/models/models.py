@@ -78,6 +78,7 @@ class Zone(Base):
     city = relationship("City", back_populates="zones")
     dark_stores = relationship("DarkStore", back_populates="zone")
     riders = relationship("Rider", back_populates="zone")
+    trigger_readings = relationship("TriggerReading", back_populates="zone")
 
 
 class DarkStore(Base):
@@ -103,11 +104,12 @@ class Rider(Base):
     phone = Column(String(15), unique=True, nullable=False)
     email = Column(String(200), unique=True, nullable=True)
     password_hash = Column(String(500), nullable=False)
+    upi_id = Column(String(100), nullable=True)
 
     # Profile
     zone_id = Column(Integer, ForeignKey("zones.id"), nullable=False)
     dark_store_id = Column(Integer, ForeignKey("dark_stores.id"), nullable=True)
-    shift_type = Column(String(20), default="morning")  # morning, evening, night, flexible
+    shift_type = Column(String(20), default="morning")
     avg_weekly_earnings = Column(Float, default=5000.0)
     avg_hourly_rate = Column(Float, default=90.0)
 
@@ -117,6 +119,7 @@ class Rider(Base):
 
     # Fraud Score (hidden, 0-100)
     fraud_score = Column(Float, default=0.0)
+    is_suspicious = Column(Boolean, default=False)
 
     # KYC
     aadhaar_verified = Column(Boolean, default=False)
@@ -130,6 +133,7 @@ class Rider(Base):
     dark_store = relationship("DarkStore", back_populates="riders")
     policies = relationship("Policy", back_populates="rider")
     claims = relationship("Claim", back_populates="rider")
+    activities = relationship("RiderActivity", back_populates="rider")
 
 
 class Policy(Base):
@@ -143,10 +147,9 @@ class Policy(Base):
     week_end = Column(DateTime, nullable=False)
 
     premium_amount = Column(Float, nullable=False)
-    premium_breakdown = Column(JSON, nullable=True)  # Per-trigger breakdown
+    premium_breakdown = Column(JSON, nullable=True)
 
-    # Coverage details
-    coverage_triggers = Column(JSON, nullable=True)  # Which triggers + payout limits
+    coverage_triggers = Column(JSON, nullable=True)
 
     status = Column(Enum(PolicyStatus), default=PolicyStatus.ACTIVE)
     auto_renew = Column(Boolean, default=True)
@@ -163,12 +166,13 @@ class Claim(Base):
     id = Column(Integer, primary_key=True, index=True)
     rider_id = Column(Integer, ForeignKey("riders.id"), nullable=False)
     policy_id = Column(Integer, ForeignKey("policies.id"), nullable=False)
+    trigger_reading_id = Column(Integer, ForeignKey("trigger_readings.id"), nullable=True)
 
     # Trigger details
     trigger_type = Column(Enum(TriggerType), nullable=False)
-    trigger_value = Column(Float, nullable=False)  # e.g., 45mm rainfall
-    trigger_threshold = Column(Float, nullable=False)  # e.g., 15mm threshold
-    trigger_sources = Column(JSON, nullable=True)  # Multi-source data
+    trigger_value = Column(Float, nullable=False)
+    trigger_threshold = Column(Float, nullable=False)
+    trigger_sources = Column(JSON, nullable=True)
 
     # Payout
     payout_amount = Column(Float, default=0.0)
@@ -177,7 +181,7 @@ class Claim(Base):
 
     # Fraud detection results
     fraud_score = Column(Float, default=0.0)
-    fraud_walls_passed = Column(JSON, nullable=True)  # Wall 1-7 results
+    fraud_walls_passed = Column(JSON, nullable=True)
 
     # Status
     status = Column(Enum(ClaimStatus), default=ClaimStatus.AUTO_APPROVED)
@@ -186,27 +190,68 @@ class Claim(Base):
     event_time = Column(DateTime, nullable=False)
     processed_at = Column(DateTime, server_default=func.now())
     paid_at = Column(DateTime, nullable=True)
+    review_notes = Column(Text, nullable=True)
 
     rider = relationship("Rider", back_populates="claims")
     policy = relationship("Policy", back_populates="claims")
+    trigger_reading = relationship("TriggerReading", back_populates="claims")
+    fraud_checks = relationship("FraudCheck", back_populates="claim")
 
 
 class TriggerReading(Base):
     __tablename__ = "trigger_readings"
 
     id = Column(Integer, primary_key=True, index=True)
-    city_id = Column(Integer, ForeignKey("cities.id"), nullable=False)
+    city_id = Column(Integer, ForeignKey("cities.id"), nullable=True)
     zone_id = Column(Integer, ForeignKey("zones.id"), nullable=True)
 
     trigger_type = Column(Enum(TriggerType), nullable=False)
     value = Column(Float, nullable=False)
     threshold = Column(Float, nullable=False)
     is_breached = Column(Boolean, default=False)
+    duration_hours = Column(Float, default=1.0)
 
-    source = Column(String(100), nullable=False)  # API source name
+    source = Column(String(100), nullable=True)
     raw_data = Column(JSON, nullable=True)
 
     timestamp = Column(DateTime, server_default=func.now())
+
+    zone = relationship("Zone", back_populates="trigger_readings")
+    claims = relationship("Claim", back_populates="trigger_reading")
+
+
+class FraudCheck(Base):
+    """Individual fraud wall check result — one row per wall per claim."""
+    __tablename__ = "fraud_checks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    claim_id = Column(Integer, ForeignKey("claims.id"), nullable=False)
+    wall_number = Column(Integer, nullable=False)
+    wall_name = Column(String(100), nullable=False)
+    passed = Column(Boolean, default=True)
+    score = Column(Float, default=0.0)
+    details = Column(JSON, nullable=True)
+    checked_at = Column(DateTime, server_default=func.now())
+
+    claim = relationship("Claim", back_populates="fraud_checks")
+
+
+class RiderActivity(Base):
+    """Mock platform data — simulates rider activity on the delivery platform."""
+    __tablename__ = "rider_activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    rider_id = Column(Integer, ForeignKey("riders.id"), nullable=False)
+    date = Column(DateTime, nullable=False)
+    hours_active = Column(Float, default=0.0)
+    deliveries_completed = Column(Integer, default=0)
+    gps_points = Column(JSON, nullable=True)
+    login_time = Column(DateTime, nullable=True)
+    logout_time = Column(DateTime, nullable=True)
+    earnings = Column(Float, default=0.0)
+    is_working = Column(Boolean, default=True)
+
+    rider = relationship("Rider", back_populates="activities")
 
 
 class PremiumRateCard(Base):
@@ -215,7 +260,7 @@ class PremiumRateCard(Base):
     id = Column(Integer, primary_key=True, index=True)
     city_id = Column(Integer, ForeignKey("cities.id"), nullable=False)
     zone_tier = Column(Enum(ZoneTier), nullable=False)
-    month = Column(Integer, nullable=False)  # 1-12
+    month = Column(Integer, nullable=False)
 
     base_rate = Column(Float, nullable=False)
     rainfall_rate = Column(Float, default=0.0)
@@ -227,5 +272,4 @@ class PremiumRateCard(Base):
 
     total_premium = Column(Float, nullable=False)
 
-    # Metadata
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
