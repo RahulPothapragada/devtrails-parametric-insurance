@@ -24,6 +24,8 @@ Thumbs.db
 # Data
 *.csv
 *.sqlite3
+*.db
+*.db-journal
 
 # Large media
 *.mp4

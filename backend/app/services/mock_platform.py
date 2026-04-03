@@ -19,22 +19,79 @@ FRAUD_SHARED_DEVICES = [
     "fraud_device_alpha",
     "fraud_device_beta",
     "fraud_device_gamma",
+    "fraud_device_delta",
+    "fraud_device_epsilon",
 ]
 
 SUSPICIOUS_DOMAINS = ["tempmail.com", "disposable.email", "fakeinbox.com", "guerrillamail.com"]
 
-INDIAN_NAMES = [
-    "Ravi Kumar", "Amit Sharma", "Suresh Yadav", "Pradeep Singh", "Vijay Patel",
-    "Rajesh Verma", "Sanjay Gupta", "Manoj Tiwari", "Deepak Joshi", "Anil Mishra",
-    "Rahul Chauhan", "Sachin More", "Ganesh Pawar", "Rohit Deshmukh", "Kiran Bhosale",
-    "Nitin Jadhav", "Santosh Patil", "Ajay Shetty", "Vikas Naik", "Rakesh Shirke",
-    "Mohan Kulkarni", "Sunil Mane", "Ashok Gaikwad", "Prakash Sawant", "Nilesh Kamble",
-    "Yogesh Salvi", "Tushar Chavan", "Sagar Shinde", "Akash Dhole", "Varun Kale",
-    "Vikram Raut", "Jitendra Borse", "Mahesh Ghate", "Ramesh Landge", "Dinesh Wagh",
-    "Sameer Jain", "Aamir Khan", "Irfan Shaikh", "Farhan Qureshi", "Imran Pathan",
-    "Arjun Nair", "Balaji Iyer", "Chetan Rao", "Dev Menon", "Eknath Shinde",
-    "Firoz Ahmad", "Govind Das", "Harish Hegde", "Ismail Beg", "Jayesh Toranmal",
+# ── Name pools for generating 1000+ unique Indian names ──
+_FIRST_NAMES = [
+    "Ravi", "Amit", "Suresh", "Pradeep", "Vijay", "Rajesh", "Sanjay", "Manoj",
+    "Deepak", "Anil", "Rahul", "Sachin", "Ganesh", "Rohit", "Kiran", "Nitin",
+    "Santosh", "Ajay", "Vikas", "Rakesh", "Mohan", "Sunil", "Ashok", "Prakash",
+    "Nilesh", "Yogesh", "Tushar", "Sagar", "Akash", "Varun", "Vikram", "Jitendra",
+    "Mahesh", "Ramesh", "Dinesh", "Sameer", "Aamir", "Irfan", "Farhan", "Imran",
+    "Naveen", "Pankaj", "Raman", "Sudhir", "Tarun", "Umesh", "Vivek", "Wasim",
+    "Yashpal", "Arjun", "Balaji", "Chetan", "Dev", "Girish", "Hari", "Jagdish",
+    "Karthik", "Lokesh", "Manjunath", "Prashanth", "Raghavendra", "Tejas", "Uday",
+    "Vinod", "Ranjith", "Shashank", "Kannan", "Murugan", "Nagaraj", "Palani",
+    "Rajendran", "Senthil", "Vignesh", "Bala", "Dhanush", "Abhijit", "Bikash",
+    "Chiranjit", "Debashis", "Gopal", "Hemanta", "Indranil", "Joydip", "Kaushik",
+    "Niloy", "Partha", "Rajat", "Sourav", "Tapan", "Omkar", "Pranav", "Rohan",
+    "Siddharth", "Tanmay", "Devendra", "Hrushikesh", "Kunal", "Aravind", "Bharath",
+    "Krishna", "Mahendra", "Naresh", "Prasad", "Ramana", "Srinivas", "Chirag",
+    "Darshan", "Hitesh", "Jaymin", "Ketan", "Mitesh", "Parth", "Bharat", "Dharmendra",
+    "Giriraj", "Hemant", "Kishan", "Lakhan", "Alok", "Brijesh", "Chandan", "Diwakar",
+    "Himanshu", "Aditya", "Bhupendra", "Dheeraj", "Anand", "Bipin", "Dilip", "Arvind",
+    "Bhanu", "Farhan", "Gaurav", "Manish", "Rajiv", "Sunil", "Dhruv", "Harsh",
+    "Ishan", "Jayant", "Kapil", "Laxman", "Mukesh", "Narayan", "Omkar", "Pawan",
+    "Qutubuddin", "Rishabh", "Sumit", "Trilok", "Umang", "Vinay", "Yadav", "Zubair",
+    "Akhilesh", "Bhushan", "Chandrakant", "Dattatray", "Eknath", "Fulchand", "Ghanshyam",
+    "Harshad", "Ishwar", "Jagannath", "Kedar", "Lalitkumar", "Madhusudan", "Namdeo",
 ]
+
+_LAST_NAMES = [
+    "Kumar", "Sharma", "Yadav", "Singh", "Patel", "Verma", "Gupta", "Tiwari",
+    "Joshi", "Mishra", "Chauhan", "More", "Pawar", "Deshmukh", "Bhosale", "Jadhav",
+    "Patil", "Shetty", "Naik", "Shirke", "Kulkarni", "Mane", "Gaikwad", "Sawant",
+    "Kamble", "Salvi", "Chavan", "Shinde", "Dhole", "Kale", "Raut", "Borse",
+    "Ghate", "Landge", "Wagh", "Jain", "Khan", "Shaikh", "Qureshi", "Pathan",
+    "Bhatia", "Tandon", "Kapoor", "Arora", "Malhotra", "Saini", "Grover", "Mehta",
+    "Nair", "Iyer", "Rao", "Menon", "Hegde", "Reddy", "Gowda", "Prasad",
+    "Kamath", "Shankar", "Nayak", "Muthu", "Selvam", "Pillai", "Vel", "Rajan",
+    "Banerjee", "Chatterjee", "Das", "Ghosh", "Mondal", "Sarkar", "Bose",
+    "Mukherjee", "Roy", "Saha", "Sen", "Dey", "Ganguly", "Paul", "Bhattacharya",
+    "Desai", "Jagtap", "Bhosle", "Deshpande", "Kadam", "Wagh", "Naidu", "Varma",
+    "Goud", "Modi", "Shah", "Thakkar", "Bhatt", "Solanki", "Meena", "Gurjar",
+    "Prajapat", "Pandey", "Awasthi", "Dubey", "Patidar", "Rathore", "Malviya",
+    "Thakur", "Rajput", "Ansari", "Tiwari", "Lal", "Misra", "Bajpai", "Saxena",
+    "Dixit", "Agarwal", "Srivastava", "Shukla", "Tripathi", "Upadhyay", "Dwivedi",
+]
+
+
+# Deduplicate pools to maximise unique combinations
+_FIRST_NAMES_UNIQUE = list(dict.fromkeys(_FIRST_NAMES))
+_LAST_NAMES_UNIQUE = list(dict.fromkeys(_LAST_NAMES))
+_POOL_SIZE = len(_FIRST_NAMES_UNIQUE) * len(_LAST_NAMES_UNIQUE)
+
+
+def generate_name(index: int) -> str:
+    """
+    Generate a guaranteed-unique Indian name.
+    First pass: first x last combos (e.g. 130 x 100 = 13,000).
+    If index exceeds pool, append numeric suffix to stay unique.
+    """
+    n = index % _POOL_SIZE
+    first = _FIRST_NAMES_UNIQUE[n % len(_FIRST_NAMES_UNIQUE)]
+    last = _LAST_NAMES_UNIQUE[n // len(_FIRST_NAMES_UNIQUE)]
+    cycle = index // _POOL_SIZE
+    suffix = f" {cycle + 2}" if cycle > 0 else ""
+    return f"{first} {last}{suffix}"
+
+
+# Keep INDIAN_NAMES for backward compatibility (legacy usage)
+INDIAN_NAMES = [generate_name(i) for i in range(200)]
 
 
 def generate_device_fingerprint(rider_id: int, is_suspicious: bool = False) -> str:
@@ -84,6 +141,8 @@ def _generate_honest_activity(rider_id, date, zone_lat, zone_lng, trigger_time=N
     deliveries = random.randint(10, 25)
     earnings = deliveries * random.uniform(15, 25)
     gps_points = _generate_moving_gps(zone_lat, zone_lng, int(hours_active * 4))
+    
+    platforms = ["Zomato", "Swiggy", "Zepto"]
 
     return {
         "rider_id": rider_id,

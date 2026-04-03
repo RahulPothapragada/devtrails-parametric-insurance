@@ -2,11 +2,11 @@
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+import hashlib
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -14,16 +14,16 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.models import Rider
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Simple hash for demo (avoids bcrypt/passlib Python 3.14 bugs)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return hashlib.sha256(password.encode()).hexdigest()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return hashlib.sha256(plain.encode()).hexdigest() == hashed
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -46,10 +46,11 @@ async def get_current_rider(
     )
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        rider_id: int = payload.get("sub")
-        if rider_id is None:
+        raw_sub = payload.get("sub")
+        if raw_sub is None:
             raise credentials_exception
-    except JWTError:
+        rider_id: int = int(raw_sub)   # sub is stored as string per JWT spec
+    except (JWTError, ValueError, TypeError):
         raise credentials_exception
 
     result = await db.execute(select(Rider).where(Rider.id == rider_id))

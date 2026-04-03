@@ -1,468 +1,353 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GitBranch, ShieldAlert, ShieldCheck, Plus, Zap, Eye } from 'lucide-react';
-import clsx from 'clsx';
-import { FRAUD_GRAPH_DATA, type GraphNode, type GraphEdge, type FraudGraphData } from '../data/simulationData';
+import { ShieldAlert, Zap, Activity, Info, Map as MapIcon, Layers, Radio, Crosshair, ChevronRight, AlertCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
-interface NodePosition {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
+// Fix Leaflet icon issue
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+
+const DefaultIcon = L.icon({
+  iconUrl: icon,
+  shadowUrl: iconShadow,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41]
+});
+
+L.Marker.prototype.options.icon = DefaultIcon;
+
+// Custom Icons for Map
+const riderIcon = (color: string) => L.divIcon({
+  className: 'custom-div-icon',
+  html: `<div style="background-color: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px ${color}88;"></div>`,
+  iconSize: [12, 12],
+  iconAnchor: [6, 6]
+});
+
+const towerIcon = L.divIcon({
+  className: 'custom-div-icon',
+  html: `<div style="background-color: #3b82f6; width: 10px; height: 10px; transform: rotate(45deg); border: 1.5px solid white;"></div>`,
+  iconSize: [10, 10],
+  iconAnchor: [5, 5]
+});
+
+const CITIES = [
+  { id: 'Mumbai', name: 'Mumbai', lat: 19.12, lng: 72.86, tier: 'Tier 1' },
+  { id: 'Delhi', name: 'Delhi NCR', lat: 28.6139, lng: 77.209, tier: 'Tier 1' },
+  { id: 'Bangalore', name: 'Bangalore', lat: 12.9716, lng: 77.5946, tier: 'Tier 1' },
+  { id: 'Chennai', name: 'Chennai', lat: 13.0827, lng: 80.2707, tier: 'Tier 1' },
+  { id: 'Kolkata', name: 'Kolkata', lat: 22.5726, lng: 88.3639, tier: 'Tier 1' },
+  { id: 'Pune', name: 'Pune', lat: 18.5204, lng: 73.8567, tier: 'Tier 2' },
+  { id: 'Hyderabad', name: 'Hyderabad', lat: 17.385, lng: 78.4867, tier: 'Tier 2' },
+  { id: 'Ahmedabad', name: 'Ahmedabad', lat: 23.0225, lng: 72.5714, tier: 'Tier 2' },
+  { id: 'Jaipur', name: 'Jaipur', lat: 26.9124, lng: 75.7873, tier: 'Tier 2' },
+  { id: 'Lucknow', name: 'Lucknow', lat: 26.8467, lng: 80.9462, tier: 'Tier 3' },
+  { id: 'Kanpur', name: 'Kanpur', lat: 26.4499, lng: 80.3319, tier: 'Tier 3' },
+  { id: 'Nagpur', name: 'Nagpur', lat: 21.1458, lng: 79.0882, tier: 'Tier 3' },
+];
+
+const INITIAL_LINKS: any[] = []; // Links auto-generated or disabled for scale
+
+function MapController({ center }: { center: [number, number] }) {
+  const map = useMap();
+  useEffect(() => {
+    map.invalidateSize();
+  }, [map]);
+  useEffect(() => {
+    map.flyTo(center, 13, { duration: 2.5, easeLinearity: 0.25 });
+  }, [center, map]);
+  return null;
 }
 
-export default function FraudGraph() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animFrameRef = useRef<number>(0);
-  const [graphData, setGraphData] = useState<FraudGraphData>(FRAUD_GRAPH_DATA);
-  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [positions, setPositions] = useState<Map<string, NodePosition>>(new Map());
-  const [isAnimating, setIsAnimating] = useState(true);
-  const [stats, setStats] = useState({ honest: 0, suspicious: 0, fraud: 0, clusters: 0 });
-  const [injected, setInjected] = useState(false);
-  const positionsRef = useRef<Map<string, NodePosition>>(new Map());
+export default function FraudGraphPage() {
+  const [activeCity, setActiveCity] = useState(CITIES[0]);
+  const [nodes, setNodes] = useState<any[]>([]);
+  const [links] = useState(INITIAL_LINKS);
+  const [selectedNode, setSelectedNode] = useState<any>(null);
+  const [mapStyle, setMapStyle] = useState<'dark' | 'satellite'>('dark');
+  const [showRadius, setShowRadius] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  // Initialize positions
   useEffect(() => {
-    const newPositions = new Map<string, NodePosition>();
-    graphData.nodes.forEach((node) => {
-      if (!positionsRef.current.has(node.id)) {
-        const angle = Math.random() * Math.PI * 2;
-        const radius = 80 + Math.random() * 200;
-        newPositions.set(node.id, {
-          x: 400 + Math.cos(angle) * radius,
-          y: 300 + Math.sin(angle) * radius,
-          vx: 0,
-          vy: 0,
-        });
-      } else {
-        newPositions.set(node.id, positionsRef.current.get(node.id)!);
-      }
-    });
-    positionsRef.current = newPositions;
-    setPositions(new Map(newPositions));
-
-    // Calc stats
-    const honest = graphData.nodes.filter(n => n.type === 'honest').length;
-    const suspicious = graphData.nodes.filter(n => n.type === 'suspicious').length;
-    const fraud = graphData.nodes.filter(n => n.type === 'fraud_ring' || n.type === 'blocked').length;
-    const clusters = new Set(graphData.nodes.filter(n => n.cluster).map(n => n.cluster)).size;
-    setStats({ honest, suspicious, fraud, clusters });
-  }, [graphData]);
-
-  // Force simulation
-  const simulate = useCallback(() => {
-    const pos = positionsRef.current;
-    const nodes = graphData.nodes;
-    const edges = graphData.edges;
-    const centerX = 400;
-    const centerY = 300;
-
-    nodes.forEach((node) => {
-      const p = pos.get(node.id);
-      if (!p) return;
-
-      // Center gravity
-      p.vx += (centerX - p.x) * 0.001;
-      p.vy += (centerY - p.y) * 0.001;
-
-      // Repulsion from all other nodes
-      nodes.forEach((other) => {
-        if (node.id === other.id) return;
-        const op = pos.get(other.id);
-        if (!op) return;
-        const dx = p.x - op.x;
-        const dy = p.y - op.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const force = 800 / (dist * dist);
-        p.vx += (dx / dist) * force;
-        p.vy += (dy / dist) * force;
-      });
-    });
-
-    // Attraction along edges
-    edges.forEach((edge) => {
-      const sp = pos.get(edge.source);
-      const tp = pos.get(edge.target);
-      if (!sp || !tp) return;
-      const dx = tp.x - sp.x;
-      const dy = tp.y - sp.y;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const force = (dist - 80) * 0.005 * edge.strength;
-      sp.vx += (dx / dist) * force;
-      sp.vy += (dy / dist) * force;
-      tp.vx -= (dx / dist) * force;
-      tp.vy -= (dy / dist) * force;
-    });
-
-    // Apply velocity with damping
-    nodes.forEach((node) => {
-      const p = pos.get(node.id);
-      if (!p) return;
-      p.vx *= 0.85;
-      p.vy *= 0.85;
-      p.x += p.vx;
-      p.y += p.vy;
-      // Bounds
-      p.x = Math.max(40, Math.min(760, p.x));
-      p.y = Math.max(40, Math.min(560, p.y));
-    });
-
-    positionsRef.current = pos;
-    setPositions(new Map(pos));
-  }, [graphData]);
-
-  // Animation loop
-  useEffect(() => {
-    if (!isAnimating) return;
-    let running = true;
-    const loop = () => {
-      if (!running) return;
-      simulate();
-      animFrameRef.current = requestAnimationFrame(loop);
-    };
-    loop();
-    return () => {
-      running = false;
-      cancelAnimationFrame(animFrameRef.current);
-    };
-  }, [isAnimating, simulate]);
-
-  // Canvas render
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = 800 * dpr;
-    canvas.height = 600 * dpr;
-    ctx.scale(dpr, dpr);
-
-    // Clear
-    ctx.clearRect(0, 0, 800, 600);
-
-    // Draw edges
-    graphData.edges.forEach((edge) => {
-      const sp = positions.get(edge.source);
-      const tp = positions.get(edge.target);
-      if (!sp || !tp) return;
-
-      const sourceNode = graphData.nodes.find(n => n.id === edge.source);
-      const targetNode = graphData.nodes.find(n => n.id === edge.target);
-      const isFraudEdge = sourceNode?.type === 'fraud_ring' || targetNode?.type === 'fraud_ring'
-                       || sourceNode?.type === 'blocked' || targetNode?.type === 'blocked';
-
-      ctx.beginPath();
-      ctx.moveTo(sp.x, sp.y);
-      ctx.lineTo(tp.x, tp.y);
-      ctx.strokeStyle = isFraudEdge
-        ? `rgba(239, 68, 68, ${0.15 + edge.strength * 0.35})`
-        : `rgba(255, 255, 255, ${0.03 + edge.strength * 0.07})`;
-      ctx.lineWidth = isFraudEdge ? 1.5 : 0.5;
-      ctx.stroke();
-    });
-
-    // Draw nodes
-    graphData.nodes.forEach((node) => {
-      const p = positions.get(node.id);
-      if (!p) return;
-
-      const isSelected = selectedNode?.id === node.id;
-      const radius = isSelected ? 10 : node.type === 'fraud_ring' || node.type === 'blocked' ? 7 : node.type === 'suspicious' ? 6 : 5;
-
-      // Glow
-      if (node.type === 'fraud_ring' || node.type === 'blocked') {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, radius + 6, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
-        ctx.fill();
-      }
-
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-
-      if (node.type === 'honest') {
-        ctx.fillStyle = isSelected ? '#10a37f' : 'rgba(16, 163, 127, 0.6)';
-      } else if (node.type === 'suspicious') {
-        ctx.fillStyle = isSelected ? '#f59e0b' : 'rgba(245, 158, 11, 0.7)';
-      } else {
-        ctx.fillStyle = isSelected ? '#ef4444' : 'rgba(239, 68, 68, 0.8)';
-      }
-      ctx.fill();
-
-      // Border
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-      ctx.strokeStyle = isSelected ? '#fff' : 'rgba(255,255,255,0.1)';
-      ctx.lineWidth = isSelected ? 2 : 0.5;
-      ctx.stroke();
-
-      // Label for larger nodes
-      if (isSelected || node.type === 'fraud_ring' || node.type === 'blocked') {
-        ctx.font = '10px monospace';
-        ctx.fillStyle = 'rgba(255,255,255,0.7)';
-        ctx.textAlign = 'center';
-        ctx.fillText(node.id, p.x, p.y - radius - 6);
-      }
-    });
-  }, [positions, graphData, selectedNode]);
-
-  // Click handler for canvas
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const scaleX = 800 / rect.width;
-    const scaleY = 600 / rect.height;
-
-    let closest: GraphNode | null = null;
-    let closestDist = Infinity;
-
-    graphData.nodes.forEach((node) => {
-      const p = positions.get(node.id);
-      if (!p) return;
-      const dx = p.x - x * scaleX;
-      const dy = p.y - y * scaleY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < 20 && dist < closestDist) {
-        closest = node;
-        closestDist = dist;
-      }
-    });
-
-    setSelectedNode(closest);
-  };
-
-  // Inject fraud ring
-  const injectFraudRing = () => {
-    if (injected) return;
-    setInjected(true);
-
-    const newNodes: GraphNode[] = [];
-    const newEdges: GraphEdge[] = [];
-    
-    // 8 new fraud nodes
-    for (let i = 50; i < 58; i++) {
-      newNodes.push({
-        id: `X-${String(i).padStart(3, '0')}`,
-        label: `Injected ${i}`,
-        type: 'blocked',
-        cluster: 99,
-        fraudScore: 90 + Math.floor(Math.random() * 10),
-      });
-    }
-
-    // Dense connections
-    for (let i = 0; i < newNodes.length; i++) {
-      for (let j = i + 1; j < newNodes.length; j++) {
-        newEdges.push({
-          source: newNodes[i].id,
-          target: newNodes[j].id,
-          type: 'shared_ip',
-          strength: 0.9,
-        });
+    async function fetchLiveNetwork() {
+      setLoading(true);
+      try {
+        const response = await fetch(`http://127.0.0.1:8000/api/admin/maps/network?city_name=${activeCity.id}`);
+        if (!response.ok) throw new Error('Network Database Offline');
+        const payload = await response.json();
+        // Insert a simulated Cell Tower node at the true city center for aesthetic radar effect
+        const baseTower = { id: `T-${activeCity.id}`, name: `${activeCity.name} Central Hub`, type: 'tower', lat: payload.city_center[0], lng: payload.city_center[1] };
+        setNodes([baseTower, ...payload.nodes]);
+      } catch (err) {
+        console.error('Failed to sync fast mapping:', err);
+      } finally {
+        setLoading(false);
       }
     }
+    fetchLiveNetwork();
+    setSelectedNode(null);
+  }, [activeCity]);
 
-    setGraphData(prev => ({
-      nodes: [...prev.nodes, ...newNodes],
-      edges: [...prev.edges, ...newEdges],
-    }));
-  };
+
+  const dashboardStats = useMemo(() => {
+    const spoofing = nodes.filter(n => n.status === 'spoofing').length;
+    const attacks = nodes.filter(n => n.status === 'attack').length;
+    return {
+      activeNodes: nodes.length,
+      threatLevel: attacks > 0 ? 'CRITICAL' : spoofing > 0 ? 'WARNING' : 'SECURE',
+      totalSpoofing: spoofing + attacks
+    };
+  }, [nodes]);
 
   return (
-    <div className="w-full max-w-[1400px] mx-auto p-4 md:p-6 pt-6 md:pt-10">
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col gap-6 pb-12"
-      >
-        {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight mb-2 flex items-center gap-3 text-white/90">
-              <span className="w-8 h-8 rounded-lg bg-[#a855f7]/20 border border-[#a855f7]/40 flex items-center justify-center">
-                <GitBranch className="w-4 h-4 text-[#a855f7]" />
-              </span>
-              Fraud Network Graph
-            </h1>
-            <p className="text-gray-400 font-medium">
-              Live force-directed visualization of Wall 5 — Graph Network Analysis with Louvain community detection.
-            </p>
+    <div className="flex h-[calc(100vh-4rem)] w-full overflow-hidden">
+      {/* Sidebar Controls */}
+      <div className="w-80 border-r bg-card flex flex-col shadow-sm z-10 shrink-0">
+        <div className="p-6 border-b bg-muted/20">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2.5 rounded-xl bg-primary/10 border border-primary/20">
+               <ShieldAlert className="w-5 h-5 text-primary" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight text-foreground">Fraud Network</h1>
           </div>
-          <button
-            onClick={injectFraudRing}
-            disabled={injected}
-            className={clsx(
-              "px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all",
-              injected
-                ? "bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed"
-                : "bg-[#ef4444]/10 border border-[#ef4444]/30 text-[#ef4444] hover:bg-[#ef4444]/20 active:scale-95"
-            )}
-          >
-            {injected ? (
-              <>
-                <ShieldAlert className="w-4 h-4" /> Ring Detected & Blocked
-              </>
-            ) : (
-              <>
-                <Plus className="w-4 h-4" /> Inject Fraud Ring
-              </>
-            )}
-          </button>
+          <p className="text-xs text-muted-foreground font-medium">Real-time geospatial anomaly detection.</p>
         </div>
 
-        {/* Main Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Graph Canvas */}
-          <div className="lg:col-span-9 glass-panel p-0 overflow-hidden relative">
-            <div className="p-3 border-b border-white/5 bg-white/[0.03] flex items-center justify-between">
-              <span className="text-xs font-mono text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                <Zap className="w-3.5 h-3.5 text-[#a855f7]" />
-                Force-Directed Graph · {graphData.nodes.length} Nodes · {graphData.edges.length} Edges
-              </span>
-              <button
-                onClick={() => setIsAnimating(!isAnimating)}
-                className="text-xs text-gray-500 hover:text-gray-300 transition-colors font-mono"
-              >
-                {isAnimating ? '⏸ Pause' : '▶ Resume'}
-              </button>
+        <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+          {/* Stats Bar */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-muted/30 p-3 rounded-lg border border-border relative">
+              <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest block mb-1">Active Nodes</span>
+              <span className="text-xl font-bold text-foreground font-mono">{loading ? '...' : dashboardStats.activeNodes}</span>
+              {loading && <span className="absolute top-3 right-3 flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span></span>}
             </div>
-            <canvas
-              ref={canvasRef}
-              width={800}
-              height={600}
-              className="w-full cursor-crosshair"
-              style={{ aspectRatio: '800/600' }}
-              onClick={handleCanvasClick}
-            />
-            {/* Legend */}
-            <div className="absolute bottom-4 left-4 flex gap-4 text-[10px] text-gray-500 font-mono bg-black/60 backdrop-blur-sm rounded-lg px-3 py-2 border border-white/5">
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#10a37f]" /> Honest</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" /> Suspicious</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#ef4444]" /> Fraud Ring</span>
+            <div className="bg-muted/30 p-3 rounded-lg border border-border">
+              <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest block mb-1">Threat Level</span>
+              <span className={cn(
+                "text-xs font-bold leading-tight pt-1 block",
+                dashboardStats.threatLevel === 'SECURE' ? "text-primary" : "text-destructive"
+              )}>
+                {dashboardStats.threatLevel}
+              </span>
             </div>
           </div>
 
-          {/* Right Panel */}
-          <div className="lg:col-span-3 flex flex-col gap-5">
-            {/* Stats */}
-            <div className="glass-panel p-5">
-              <span className="text-xs font-mono text-gray-400 uppercase tracking-widest mb-4 block">Network Stats</span>
-              <div className="space-y-3">
-                <StatRow label="Honest Riders" value={stats.honest} color="#10a37f" />
-                <StatRow label="Suspicious" value={stats.suspicious} color="#f59e0b" />
-                <StatRow label="Fraud Ring Members" value={stats.fraud} color="#ef4444" />
-                <div className="h-px bg-white/5" />
-                <StatRow label="Clusters Detected" value={stats.clusters} color="#a855f7" />
-              </div>
+          {/* Controls */}
+          <div className="space-y-4">
+            <h2 className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Operational Zone</h2>
+            <select 
+              className="w-full bg-card border border-border rounded-xl px-4 h-11 text-sm font-bold text-foreground scrollbar-hide focus:outline-none focus:ring-1 focus:ring-primary/50"
+              value={activeCity.id}
+              onChange={(e) => setActiveCity(CITIES.find(c => c.id === e.target.value)!)}
+            >
+              <optgroup label="Tier 1 Cities">
+                {CITIES.filter(c => c.tier === 'Tier 1').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </optgroup>
+              <optgroup label="Tier 2 Cities">
+                {CITIES.filter(c => c.tier === 'Tier 2').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </optgroup>
+              <optgroup label="Tier 3 Cities">
+                {CITIES.filter(c => c.tier === 'Tier 3').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </optgroup>
+            </select>
+
+            <h2 className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-6">Interface Controls</h2>
+            <div className="flex bg-muted/50 p-1 rounded-xl border border-border shadow-inner">
+               <button 
+                onClick={() => setMapStyle('dark')}
+                className={cn(
+                  "flex-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm",
+                  mapStyle === 'dark' ? "bg-card text-foreground shadow-md ring-1 ring-primary/20" : "text-muted-foreground hover:text-foreground"
+                )}
+               >
+                 <MapIcon className="w-3.5 h-3.5" /> Dark
+               </button>
+               <button 
+                onClick={() => setMapStyle('satellite')}
+                className={cn(
+                  "flex-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm",
+                  mapStyle === 'satellite' ? "bg-card text-foreground shadow-md ring-1 ring-primary/20" : "text-muted-foreground hover:text-foreground"
+                )}
+               >
+                 <Layers className="w-3.5 h-3.5" /> Satellite
+               </button>
             </div>
 
-            {/* Selected Node Details */}
-            <div className="glass-panel p-5 flex-1">
-              <span className="text-xs font-mono text-gray-400 uppercase tracking-widest mb-4 block flex items-center gap-2">
-                <Eye className="w-3.5 h-3.5" /> Node Inspector
-              </span>
-              {selectedNode ? (
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={selectedNode.id}
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className="space-y-3"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className={clsx(
-                        "w-8 h-8 rounded-lg flex items-center justify-center",
-                        selectedNode.type === 'honest' && "bg-[#10a37f]/10 border border-[#10a37f]/30",
-                        selectedNode.type === 'suspicious' && "bg-[#f59e0b]/10 border border-[#f59e0b]/30",
-                        (selectedNode.type === 'fraud_ring' || selectedNode.type === 'blocked') && "bg-[#ef4444]/10 border border-[#ef4444]/30",
-                      )}>
-                        {selectedNode.type === 'honest' ? <ShieldCheck className="w-4 h-4 text-[#10a37f]" /> : <ShieldAlert className="w-4 h-4 text-[#ef4444]" />}
-                      </div>
-                      <div>
-                        <p className="font-bold text-white text-sm">{selectedNode.id}</p>
-                        <p className={clsx(
-                          "text-[10px] uppercase font-semibold tracking-wider",
-                          selectedNode.type === 'honest' ? "text-[#10a37f]" : selectedNode.type === 'suspicious' ? "text-[#f59e0b]" : "text-[#ef4444]"
-                        )}>
-                          {selectedNode.type.replace('_', ' ')}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="space-y-2 text-xs">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Fraud Score</span>
-                        <span className={clsx(
-                          "font-mono font-bold",
-                          selectedNode.fraudScore < 30 ? "text-[#10a37f]" : selectedNode.fraudScore < 60 ? "text-[#f59e0b]" : "text-[#ef4444]"
-                        )}>
-                          {selectedNode.fraudScore}/100
-                        </span>
-                      </div>
-                      {selectedNode.cluster && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Cluster ID</span>
-                          <span className="text-[#ef4444] font-mono font-bold">#{selectedNode.cluster}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Connections</span>
-                        <span className="text-white font-mono">
-                          {graphData.edges.filter(e => e.source === selectedNode.id || e.target === selectedNode.id).length}
-                        </span>
-                      </div>
-                    </div>
-                    {/* Fraud score bar */}
-                    <div className="w-full bg-[#27272a] rounded-full h-1.5 overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${selectedNode.fraudScore}%` }}
-                        className={clsx(
-                          "h-full rounded-full",
-                          selectedNode.fraudScore < 30 ? "bg-[#10a37f]" : selectedNode.fraudScore < 60 ? "bg-[#f59e0b]" : "bg-[#ef4444]"
-                        )}
-                      />
-                    </div>
-                  </motion.div>
-                </AnimatePresence>
-              ) : (
-                <p className="text-xs text-gray-600 italic">Click a node to inspect</p>
+            <Button
+              variant="outline"
+              onClick={() => setShowRadius(!showRadius)}
+              className={cn(
+                "w-full justify-start h-10 rounded-xl px-4 font-bold text-xs ring-offset-background transition-all",
+                showRadius ? "bg-primary/10 border-primary/40 text-primary" : "text-muted-foreground"
               )}
-            </div>
-
-            {injected && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="glass-panel p-4 bg-[#ef4444]/5 border-[#ef4444]/20"
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <ShieldAlert className="w-4 h-4 text-[#ef4444]" />
-                  <span className="text-xs font-semibold text-[#ef4444]">RING INJECTED & DETECTED</span>
-                </div>
-                <p className="text-[11px] text-gray-400 leading-relaxed">
-                  8 fake accounts injected. Louvain algorithm identified Cluster #99 in real-time. 
-                  All 8 nodes auto-blocked. 28 edges flagged as shared-IP connections.
-                </p>
-              </motion.div>
-            )}
+            >
+              <Radio className={cn("w-4 h-4 mr-3", showRadius && "animate-pulse")} />
+              Toggle Tower Coverage ({showRadius ? 'ON' : 'OFF'})
+            </Button>
           </div>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
 
-function StatRow({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-xs text-gray-400">{label}</span>
-      <span className="font-mono font-bold text-sm" style={{ color }}>{value}</span>
+        </div>
+
+        {/* Legend */}
+        <div className="p-6 bg-muted/20 border-t border-border">
+           <div className="flex flex-col gap-3">
+             <div className="flex items-center gap-3 text-xs font-bold text-muted-foreground">
+               <div className="w-3 h-3 rounded-full bg-primary ring-4 ring-primary/10" /> Connected Rider
+             </div>
+             <div className="flex items-center gap-3 text-xs font-bold text-muted-foreground">
+               <div className="w-3 h-3 rounded-full bg-destructive shadow-[0_0_8px_var(--destructive)]" /> High-Risk Anomaly
+             </div>
+             <div className="flex items-center gap-3 text-xs font-bold text-muted-foreground">
+               <div className="w-[10px] h-[10px] rotate-45 bg-blue-500 border border-white" /> Network Infrastructure
+             </div>
+           </div>
+        </div>
+      </div>
+
+      {/* Main Map View */}
+      <div className="flex-1 relative bg-muted">
+        <MapContainer 
+          center={[activeCity.lat, activeCity.lng]} 
+          zoom={13} 
+          className="h-full w-full"
+          style={{ cursor: 'crosshair', filter: mapStyle === 'dark' ? 'invert(100%) hue-rotate(180deg) brightness(85%) contrast(110%) saturate(80%)' : 'none' }}
+        >
+          <TileLayer
+            url={mapStyle === 'dark' 
+              ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" 
+              : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            }
+            attribution='&copy; <a href="http://osm.org/copyright">OpenStreetMap</a>'
+          />
+          <MapController center={[activeCity.lat, activeCity.lng]} />
+
+          {/* Links */}
+          {links.map((link, i) => {
+            const start = nodes.find(n => n.id === link.from);
+            const end = nodes.find(n => n.id === link.to);
+            if (!start || !end) return null;
+            const isDanger = (start as any).risk === 'high' || (start as any).risk === 'extreme';
+            return (
+              <Polyline 
+                key={i} 
+                positions={[[start.lat, start.lng], [end.lat, end.lng]]} 
+                pathOptions={{ 
+                  color: isDanger ? '#ef4444' : '#10a37f', 
+                  weight: isDanger ? 3 : 2,
+                  dashArray: isDanger ? '5,10' : undefined,
+                  opacity: 0.6
+                }} 
+              />
+            );
+          })}
+
+          {/* Nodes */}
+          {nodes.map(node => (
+            <Marker 
+              key={node.id} 
+              position={[node.lat, node.lng]}
+              icon={node.type === 'tower' ? towerIcon : riderIcon(
+                node.status === 'attack' ? '#ef4444' : 
+                node.status === 'spoofing' ? '#f59e0b' : '#10a37f'
+              )}
+              eventHandlers={{
+                click: () => setSelectedNode(node),
+              }}
+            >
+              <Popup>
+                <div className="p-1 font-sans">
+                  <p className="font-bold text-sm leading-none pt-1">{node.name}</p>
+                  <p className="text-[10px] text-muted-foreground mt-1 uppercase font-bold tracking-tight">{node.location}</p>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+        </MapContainer>
+
+        {/* Floating Node Inspector */}
+        <AnimatePresence>
+          {selectedNode && (
+            <motion.div
+              initial={{ opacity: 0, y: 50, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 50, scale: 0.95 }}
+              className="absolute bottom-10 left-10 right-10 md:left-auto md:right-10 md:w-96 z-[1000] rounded-2xl border bg-card/95 backdrop-blur-xl shadow-2xl overflow-hidden shadow-primary/5"
+            >
+              <div className={cn(
+                "h-1.5 w-full",
+                selectedNode.status === 'attack' ? "bg-destructive shadow-[0_0_10px_var(--destructive)]" : 
+                selectedNode.status === 'spoofing' ? "bg-amber-500" : "bg-primary"
+              )} />
+              <div className="p-6">
+                <div className="flex justify-between items-start mb-6">
+                   <div className="flex items-center gap-4">
+                     {selectedNode.type === 'tower' ? (
+                        <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                           <Crosshair className="w-6 h-6 text-blue-500" />
+                        </div>
+                     ) : (
+                        <div className={cn(
+                          "w-12 h-12 rounded-xl flex items-center justify-center border",
+                          selectedNode.risk === 'extreme' ? "bg-destructive/10 border-destructive/20 text-destructive" :
+                          selectedNode.risk === 'high' ? "bg-amber-500/10 border-amber-500/20 text-amber-500" :
+                          "bg-primary/10 border-primary/20 text-primary"
+                        )}>
+                           <Activity className="w-6 h-6" />
+                        </div>
+                     )}
+                     <div>
+                        <h3 className="text-xl font-bold text-foreground leading-none">{selectedNode.name}</h3>
+                        <p className="text-xs text-muted-foreground font-bold mt-2 uppercase tracking-widest">{selectedNode.id}</p>
+                     </div>
+                   </div>
+                   <Button variant="ghost" size="icon" onClick={() => setSelectedNode(null)} className="h-8 w-8 rounded-full">
+                     <Crosshair className="w-4 h-4 rotate-45" />
+                   </Button>
+                </div>
+
+                <div className="space-y-4">
+                   <div className="flex justify-between items-center p-3.5 rounded-xl border bg-muted/30">
+                      <div className="flex items-center gap-3">
+                         <MapIcon className="w-4 h-4 text-muted-foreground" />
+                         <span className="text-xs font-bold text-muted-foreground">Geospatial Center</span>
+                      </div>
+                      <span className="text-xs font-bold text-foreground font-mono">{selectedNode.lat.toFixed(4)}, {selectedNode.lng.toFixed(4)}</span>
+                   </div>
+
+                   {selectedNode.type === 'rider' && (
+                     <div className={cn(
+                        "p-4 rounded-xl border flex items-center gap-4",
+                        selectedNode.risk === 'extreme' ? "bg-destructive/10 border-destructive/20" : "bg-muted/50 border-border"
+                     )}>
+                        {selectedNode.risk === 'extreme' ? <AlertCircle className="w-5 h-5 text-destructive animate-bounce" /> : <Info className="w-5 h-5 text-primary" />}
+                        <div>
+                           <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest leading-none mb-1">Safety Verdict</p>
+                           <p className={cn(
+                              "text-xs font-bold",
+                              selectedNode.risk === 'extreme' ? "text-destructive" : "text-foreground"
+                           )}>
+                              {selectedNode.risk === 'extreme' ? 'CRITICAL: Multi-Proxy Relay Detected' : 
+                               selectedNode.risk === 'high' ? 'High Risk Location Mismatch' : 'Nominal Signal Pattern'}
+                           </p>
+                        </div>
+                     </div>
+                   )}
+                </div>
+
+                <div className="mt-8">
+                   <Button className="w-full rounded-xl h-11 bg-primary hover:bg-primary/90 font-bold">
+                     Analyze Defense Packet <ChevronRight className="w-4 h-4 ml-2" />
+                   </Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

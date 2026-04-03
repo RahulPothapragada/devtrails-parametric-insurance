@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.models import (
-    Policy, Claim, Rider, Zone, TriggerReading, RiderActivity,
+    Policy, Claim, Rider, Zone, City, TriggerReading, RiderActivity,
     PolicyStatus, ClaimStatus, TriggerType,
 )
 from app.services.fraud.fraud_engine import FraudEngine
@@ -19,10 +19,25 @@ COVERAGE_PCT = 0.60
 AUTO_APPROVE_MAX = 20
 PENDING_REVIEW_MAX = 60
 
+# Hourly rates by zone tier (base for Tier 1 Urban)
 ZONE_HOURLY_RATES = {
     "high": 170,
     "medium": 140,
     "low": 110,
+}
+
+# City tier multiplier — reflects earning potential
+CITY_TIER_RATE_MULT = {
+    "tier_1": 1.0,    # Metros
+    "tier_2": 0.80,   # Major cities
+    "tier_3": 0.60,   # Smaller cities
+}
+
+# Area type multiplier — urban riders earn more than rural
+AREA_TYPE_RATE_MULT = {
+    "urban": 1.0,
+    "semi_urban": 0.75,
+    "rural": 0.55,
 }
 
 fraud_engine = FraudEngine()
@@ -62,11 +77,40 @@ async def generate_claims_for_trigger(
         if not rider:
             continue
 
-        # Get zone tier for hourly rate
+        # Get zone tier + area type + city tier for hourly rate
         zone_result = await db.execute(select(Zone).where(Zone.id == zone_id))
         zone = zone_result.scalar_one_or_none()
         tier_str = zone.tier.value if zone else "medium"
-        hourly_rate = ZONE_HOURLY_RATES.get(tier_str, 140)
+        area_type_str = zone.area_type.value if zone and zone.area_type else "urban"
+
+        # Get city tier
+        city_tier_str = "tier_1"
+        if zone:
+            city_result = await db.execute(select(City).where(City.id == zone.city_id))
+            city = city_result.scalar_one_or_none()
+            city_tier_str = city.city_tier.value if city and city.city_tier else "tier_1"
+
+        # UNDERWRITING RULE: Trigger MUST match worker's active hours
+        # We define rough shift hours: morning: 7am-3pm, evening: 3pm-11pm, night: 11pm-7am, flexible: all day
+        hour = trigger_reading.timestamp.hour
+        shift_match = False
+        if rider.shift_type == "flexible":
+            shift_match = True
+        elif rider.shift_type == "morning" and 6 <= hour <= 15:
+            shift_match = True
+        elif rider.shift_type == "evening" and 15 <= hour <= 23:
+            shift_match = True
+        elif rider.shift_type == "night" and (hour >= 22 or hour <= 7):
+            shift_match = True
+
+        if not shift_match:
+            # Drop policy from payout generation for this trigger
+            continue
+
+        base_rate = ZONE_HOURLY_RATES.get(tier_str, 140)
+        tier_mult = CITY_TIER_RATE_MULT.get(city_tier_str, 1.0)
+        area_mult = AREA_TYPE_RATE_MULT.get(area_type_str, 1.0)
+        hourly_rate = round(base_rate * tier_mult * area_mult)
 
         hours_lost = trigger_reading.duration_hours if trigger_reading.duration_hours else 3.0
         zone_impact = await _calculate_zone_impact(db, zone_id, trigger_reading)

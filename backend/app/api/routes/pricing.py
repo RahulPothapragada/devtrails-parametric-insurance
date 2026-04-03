@@ -20,7 +20,14 @@ async def get_premium_quote(
     month: int = Query(default=7, ge=1, le=12),
 ):
     result = pricing_engine.calculate_premium(city=city, zone_tier=zone_tier, month=month)
-    return PremiumQuote(**result)
+    return PremiumQuote(
+        city=result["city"],
+        zone_tier=result["zone_tier"],
+        month=result["month"],
+        base_rate=result.get("weekly_premium", result.get("total_weekly_premium", 0)),
+        breakdown=result.get("breakdown", {}),
+        total_weekly_premium=result.get("total_weekly_premium", 0),
+    )
 
 
 @router.get("/rate-card", response_model=list[RateCardOut])

@@ -11,10 +11,22 @@ import enum
 
 # ── Enums ──
 
+class CityTier(str, enum.Enum):
+    TIER_1 = "tier_1"   # Metros: Mumbai, Delhi, Bangalore, Chennai, Kolkata
+    TIER_2 = "tier_2"   # Major cities: Pune, Hyderabad, Ahmedabad, Jaipur
+    TIER_3 = "tier_3"   # Smaller cities: Lucknow, Indore, Patna, Bhopal
+
+
+class AreaType(str, enum.Enum):
+    URBAN = "urban"
+    SEMI_URBAN = "semi_urban"
+    RURAL = "rural"
+
+
 class ZoneTier(str, enum.Enum):
-    HIGH = "high"       # Tier 1: Flood-prone, poor drainage
-    MEDIUM = "medium"   # Tier 2: Occasional disruption
-    LOW = "low"         # Tier 3: Elevated, good drainage
+    HIGH = "high"       # High risk: Flood-prone, poor drainage
+    MEDIUM = "medium"   # Medium risk: Occasional disruption
+    LOW = "low"         # Low risk: Elevated, good drainage
 
 
 class TriggerType(str, enum.Enum):
@@ -35,6 +47,21 @@ class ClaimStatus(str, enum.Enum):
     FLAGGED = "flagged"
 
 
+class PayoutStatus(str, enum.Enum):
+    NOT_INITIATED = "not_initiated"
+    INITIATED = "initiated"
+    PROCESSING = "processing"
+    CONFIRMED = "confirmed"
+    FAILED = "failed"
+    ROLLED_BACK = "rolled_back"
+
+
+class PayoutChannel(str, enum.Enum):
+    UPI = "upi"
+    IMPS = "imps"
+    RAZORPAY = "razorpay"
+
+
 class PolicyStatus(str, enum.Enum):
     ACTIVE = "active"
     EXPIRED = "expired"
@@ -53,6 +80,7 @@ class City(Base):
     lat = Column(Float, nullable=False)
     lng = Column(Float, nullable=False)
     base_rate = Column(Float, default=20.0)  # Base weekly premium
+    city_tier = Column(Enum(CityTier), default=CityTier.TIER_1)
 
     zones = relationship("Zone", back_populates="city")
 
@@ -64,6 +92,7 @@ class Zone(Base):
     city_id = Column(Integer, ForeignKey("cities.id"), nullable=False)
     name = Column(String(200), nullable=False)
     tier = Column(Enum(ZoneTier), default=ZoneTier.MEDIUM)
+    area_type = Column(Enum(AreaType), default=AreaType.URBAN)
     lat = Column(Float, nullable=False)
     lng = Column(Float, nullable=False)
 
@@ -112,6 +141,10 @@ class Rider(Base):
     shift_type = Column(String(20), default="morning")
     avg_weekly_earnings = Column(Float, default=5000.0)
     avg_hourly_rate = Column(Float, default=90.0)
+    
+    # Underwriting / Activity
+    active_days_last_30 = Column(Integer, default=20)
+    activity_tier = Column(String(20), default="high")  # 'high', 'medium', 'low'
 
     # Shield Level (1-5)
     shield_level = Column(Integer, default=1)
@@ -178,6 +211,14 @@ class Claim(Base):
     payout_amount = Column(Float, default=0.0)
     hours_lost = Column(Float, default=0.0)
     hourly_rate_used = Column(Float, default=0.0)
+
+    # Payout lifecycle
+    payout_status = Column(Enum(PayoutStatus), default=PayoutStatus.NOT_INITIATED)
+    payout_channel = Column(Enum(PayoutChannel), nullable=True)
+    payout_ref = Column(String(100), nullable=True)   # txn ID / UPI ref
+    payout_initiated_at = Column(DateTime, nullable=True)
+    payout_confirmed_at = Column(DateTime, nullable=True)
+    payout_failure_reason = Column(String(500), nullable=True)
 
     # Fraud detection results
     fraud_score = Column(Float, default=0.0)
@@ -252,6 +293,41 @@ class RiderActivity(Base):
     is_working = Column(Boolean, default=True)
 
     rider = relationship("Rider", back_populates="activities")
+
+
+class WeeklyLedger(Base):
+    """Weekly actuarial ledger — tracks premiums collected vs claims paid per city per week."""
+    __tablename__ = "weekly_ledgers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    city_id = Column(Integer, ForeignKey("cities.id"), nullable=False)
+    week_start = Column(DateTime, nullable=False)
+    week_end = Column(DateTime, nullable=False)
+
+    # Premiums
+    total_policies = Column(Integer, default=0)
+    premium_collected = Column(Float, default=0.0)
+
+    # Claims
+    total_claims = Column(Integer, default=0)
+    claims_approved = Column(Integer, default=0)
+    claims_denied = Column(Integer, default=0)
+    total_payout = Column(Float, default=0.0)
+
+    # Actuarial metrics
+    loss_ratio = Column(Float, default=0.0)       # total_payout / premium_collected
+    bcr = Column(Float, default=0.0)               # burning cost rate
+    avg_claim_amount = Column(Float, default=0.0)
+
+    # Area breakdown
+    urban_claims = Column(Integer, default=0)
+    semi_urban_claims = Column(Integer, default=0)
+    rural_claims = Column(Integer, default=0)
+    urban_payout = Column(Float, default=0.0)
+    semi_urban_payout = Column(Float, default=0.0)
+    rural_payout = Column(Float, default=0.0)
+
+    created_at = Column(DateTime, server_default=func.now())
 
 
 class PremiumRateCard(Base):

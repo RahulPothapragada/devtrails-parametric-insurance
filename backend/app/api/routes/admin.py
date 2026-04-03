@@ -1,4 +1,4 @@
-"""Admin dashboard routes — platform stats, live feed, cities, claim review."""
+"""Admin dashboard routes — platform stats, live feed, cities, claim review, actuarial."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,8 +6,9 @@ from sqlalchemy import select, func, desc
 from datetime import datetime, timezone
 
 from app.core.database import get_db
-from app.models.models import Rider, Policy, Claim, TriggerReading, Zone, City
+from app.models.models import Rider, Policy, Claim, TriggerReading, Zone, City, WeeklyLedger
 from app.schemas.schemas import AdminStats, ClaimOut
+import random
 
 router = APIRouter()
 
@@ -114,4 +115,303 @@ async def review_claim(
 async def list_cities(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(City).order_by(City.name))
     cities = result.scalars().all()
-    return [{"id": c.id, "name": c.name, "state": c.state, "lat": c.lat, "lng": c.lng} for c in cities]
+    return [
+        {"id": c.id, "name": c.name, "state": c.state, "lat": c.lat, "lng": c.lng,
+         "city_tier": c.city_tier.value if c.city_tier else "tier_1"}
+        for c in cities
+    ]
+
+
+# ── Actuarial / Weekly Ledger Endpoints ──
+
+# Monsoon stress multipliers — city-specific (from IMD historical worst-case data)
+MONSOON_MULTIPLIERS = {
+    "Mumbai": 2.2, "Delhi": 1.6, "Bangalore": 1.8, "Chennai": 2.0,
+    "Kolkata": 2.4, "Pune": 1.8, "Hyderabad": 1.5, "Ahmedabad": 1.4,
+    "Jaipur": 1.3, "Lucknow": 2.0, "Indore": 1.5, "Patna": 2.8, "Bhopal": 1.6,
+}
+
+
+def _sustainability_status(lr: float) -> str:
+    if lr <= 0.55:   return "healthy"
+    if lr <= 0.70:   return "optimal"
+    if lr <= 0.85:   return "watch"
+    return "critical"
+
+
+@router.get("/actuarial/stress-test")
+async def actuarial_stress_test(db: AsyncSession = Depends(get_db)):
+    """Monsoon stress scenario — projects LR/BCR if a 14-day extreme monsoon hits today.
+    No DB writes. Pure computation on current 8-week ledger data.
+    Scenario: IMD historical worst-case (300mm/6hrs, Mumbai Jul 2024).
+    """
+    cities_result = await db.execute(select(City).order_by(City.name))
+    cities = cities_result.scalars().all()
+
+    projections = []
+    cities_to_suspend: list[str] = []
+
+    for city in cities:
+        ledger_result = await db.execute(
+            select(WeeklyLedger).where(WeeklyLedger.city_id == city.id)
+        )
+        ledgers = ledger_result.scalars().all()
+        if not ledgers:
+            continue
+
+        total_premium = sum(l.premium_collected for l in ledgers)
+        total_payout  = sum(l.total_payout     for l in ledgers)
+        current_lr    = round(total_payout / total_premium, 4) if total_premium > 0 else 0.0
+
+        mult       = MONSOON_MULTIPLIERS.get(city.name, 1.8)
+        stress_lr  = round(min(current_lr * mult, 2.5), 4)
+
+        current_status = _sustainability_status(current_lr)
+        stress_status  = _sustainability_status(stress_lr)
+
+        proj = {
+            "city":              city.name,
+            "city_tier":         city.city_tier.value if city.city_tier else "tier_1",
+            "current_lr":        current_lr,
+            "current_status":    current_status,
+            "monsoon_multiplier": mult,
+            "stress_lr":         stress_lr,
+            "stress_status":     stress_status,
+            "would_flip_to_suspended": stress_lr > 0.85 and current_lr <= 0.85,
+            "already_suspended": current_lr > 0.85,
+            "lr_increase_pct":   round((stress_lr - current_lr) / current_lr * 100, 1) if current_lr > 0 else 0,
+        }
+        projections.append(proj)
+        if stress_lr > 0.85:
+            cities_to_suspend.append(city.name)
+
+    suspend_count    = len(cities_to_suspend)
+    new_suspensions  = [p["city"] for p in projections if p["would_flip_to_suspended"]]
+    avg_lr_increase  = (
+        round(sum(p["lr_increase_pct"] for p in projections) / len(projections), 1)
+        if projections else 0
+    )
+
+    return {
+        "scenario":    "14-Day Extreme Monsoon (IMD worst-case: 300mm/6hrs, Mumbai Jul 2024)",
+        "methodology": "Current 8-week LR × city-specific IMD monsoon intensity multiplier",
+        "bcr_target":  "0.55–0.70",
+        "suspend_threshold": 0.85,
+        "cities":      projections,
+        "summary": {
+            "total_cities_assessed": len(projections),
+            "cities_that_would_be_suspended": cities_to_suspend,
+            "new_suspensions": new_suspensions,
+            "already_suspended": [p["city"] for p in projections if p["already_suspended"]],
+            "suspend_count":     suspend_count,
+            "avg_lr_increase_pct": avg_lr_increase,
+        },
+    }
+
+
+@router.get("/actuarial/{city_name}")
+async def actuarial_summary(city_name: str, db: AsyncSession = Depends(get_db)):
+    """Get actuarial summary for a city — BCR, Loss Ratio, weekly trend, sustainability status."""
+    city_result = await db.execute(select(City).where(City.name == city_name))
+    city = city_result.scalar_one_or_none()
+    if not city:
+        raise HTTPException(status_code=404, detail=f"City '{city_name}' not found")
+
+    ledger_result = await db.execute(
+        select(WeeklyLedger)
+        .where(WeeklyLedger.city_id == city.id)
+        .order_by(WeeklyLedger.week_start.desc())
+    )
+    ledgers = ledger_result.scalars().all()
+
+    if not ledgers:
+        raise HTTPException(status_code=404, detail="No historical data found for this city")
+
+    total_premium = sum(l.premium_collected for l in ledgers)
+    total_payout = sum(l.total_payout for l in ledgers)
+    avg_lr = round(total_payout / total_premium, 4) if total_premium > 0 else 0
+    avg_bcr = avg_lr  # BCR ≈ Loss Ratio for parametric
+
+    # Sustainability check (from slides: >85% = suspend)
+    if avg_lr <= 0.55:
+        status = "healthy"
+    elif avg_lr <= 0.70:
+        status = "optimal"       # target BCR range 0.55-0.70
+    elif avg_lr <= 0.85:
+        status = "watch"
+    else:
+        status = "critical"      # suspend new enrolments
+
+    urban_total = sum(l.urban_payout for l in ledgers)
+    semi_total = sum(l.semi_urban_payout for l in ledgers)
+    rural_total = sum(l.rural_payout for l in ledgers)
+
+    weekly_trend = [
+        {
+            "week_start": l.week_start.isoformat(),
+            "premium_collected": l.premium_collected,
+            "total_payout": l.total_payout,
+            "loss_ratio": l.loss_ratio,
+            "claims": l.total_claims,
+            "approved": l.claims_approved,
+            "denied": l.claims_denied,
+        }
+        for l in ledgers
+    ]
+
+    return {
+        "city": city_name,
+        "city_tier": city.city_tier.value if city.city_tier else "tier_1",
+        "total_weeks": len(ledgers),
+        "total_premium_collected": round(total_premium, 2),
+        "total_payout": round(total_payout, 2),
+        "avg_loss_ratio": avg_lr,
+        "avg_bcr": avg_bcr,
+        "sustainability_status": status,
+        "note": "BCR target: 0.55–0.70. Loss Ratio > 0.85 triggers enrolment suspension.",
+        "urban_vs_rural": {
+            "urban_payout": round(urban_total, 2),
+            "semi_urban_payout": round(semi_total, 2),
+            "rural_payout": round(rural_total, 2),
+            "urban_pct": round(urban_total / total_payout * 100, 1) if total_payout > 0 else 0,
+            "semi_urban_pct": round(semi_total / total_payout * 100, 1) if total_payout > 0 else 0,
+            "rural_pct": round(rural_total / total_payout * 100, 1) if total_payout > 0 else 0,
+        },
+        "weekly_trend": weekly_trend,
+    }
+
+
+@router.get("/actuarial")
+async def all_cities_actuarial(db: AsyncSession = Depends(get_db)):
+    """Compare actuarial health across all cities — BCR, Loss Ratio, tier breakdown."""
+    cities_result = await db.execute(select(City).order_by(City.name))
+    cities = cities_result.scalars().all()
+
+    summaries = []
+    for city in cities:
+        ledger_result = await db.execute(
+            select(WeeklyLedger).where(WeeklyLedger.city_id == city.id)
+        )
+        ledgers = ledger_result.scalars().all()
+        if not ledgers:
+            continue
+
+        total_premium = sum(l.premium_collected for l in ledgers)
+        total_payout = sum(l.total_payout for l in ledgers)
+        avg_lr = round(total_payout / total_premium, 4) if total_premium > 0 else 0
+
+        if avg_lr <= 0.55:
+            status = "healthy"
+        elif avg_lr <= 0.70:
+            status = "optimal"
+        elif avg_lr <= 0.85:
+            status = "watch"
+        else:
+            status = "critical"
+
+        summaries.append({
+            "city": city.name,
+            "city_tier": city.city_tier.value if city.city_tier else "tier_1",
+            "weeks": len(ledgers),
+            "premium_collected": round(total_premium, 2),
+            "total_payout": round(total_payout, 2),
+            "avg_loss_ratio": avg_lr,
+            "avg_bcr": avg_lr,
+            "sustainability": status,
+            "total_policies": sum(l.total_policies for l in ledgers) // len(ledgers),
+            "total_claims": sum(l.total_claims for l in ledgers),
+        })
+
+    return {
+        "total_cities": len(summaries),
+        "tier_breakdown": {
+            "tier_1": [s for s in summaries if s["city_tier"] == "tier_1"],
+            "tier_2": [s for s in summaries if s["city_tier"] == "tier_2"],
+            "tier_3": [s for s in summaries if s["city_tier"] == "tier_3"],
+        },
+        "all_cities": summaries,
+    }
+
+
+@router.get("/weekly-ledger/{city_name}")
+async def weekly_ledger(city_name: str, weeks: int = 8, db: AsyncSession = Depends(get_db)):
+    """Get raw weekly ledger entries for a city."""
+    city_result = await db.execute(select(City).where(City.name == city_name))
+    city = city_result.scalar_one_or_none()
+    if not city:
+        raise HTTPException(status_code=404, detail=f"City '{city_name}' not found")
+
+    ledger_result = await db.execute(
+        select(WeeklyLedger)
+        .where(WeeklyLedger.city_id == city.id)
+        .order_by(WeeklyLedger.week_start.desc())
+        .limit(weeks)
+    )
+    ledgers = ledger_result.scalars().all()
+
+    return {
+        "city": city_name,
+        "city_tier": city.city_tier.value if city.city_tier else "tier_1",
+        "weeks": [
+            {
+                "week_start": l.week_start.isoformat(),
+                "week_end": l.week_end.isoformat(),
+                "total_policies": l.total_policies,
+                "premium_collected": l.premium_collected,
+                "total_claims": l.total_claims,
+                "claims_approved": l.claims_approved,
+                "claims_denied": l.claims_denied,
+                "total_payout": l.total_payout,
+                "loss_ratio": l.loss_ratio,
+                "bcr": l.bcr,
+                "avg_claim_amount": l.avg_claim_amount,
+                "area_breakdown": {
+                    "urban": {"claims": l.urban_claims, "payout": l.urban_payout},
+                    "semi_urban": {"claims": l.semi_urban_claims, "payout": l.semi_urban_payout},
+                    "rural": {"claims": l.rural_claims, "payout": l.rural_payout},
+                },
+            }
+            for l in ledgers
+        ],
+    }
+
+@router.get("/maps/network")
+async def get_map_network(city_name: str, limit: int = 150, db: AsyncSession = Depends(get_db)):
+    """Fetch live riders from the database organically scattered around their Zone centers."""
+    city_result = await db.execute(select(City).where(City.name == city_name))
+    city = city_result.scalar_one_or_none()
+    if not city:
+        raise HTTPException(status_code=404, detail="City not found")
+        
+    # Get active riders deeply bounded into this city
+    rider_result = await db.execute(
+        select(Rider, Zone)
+        .join(Zone, Rider.zone_id == Zone.id)
+        .where(Zone.city_id == city.id)
+        .limit(limit)
+    )
+    
+    nodes = []
+    for rider, zone in rider_result.all():
+        # Scatter GPS slightly so they organically cluster around their operations zones
+        lat_offset = random.uniform(-0.04, 0.04)
+        lng_offset = random.uniform(-0.04, 0.04)
+        
+        status = 'normal'
+        risk = 'low'
+        if rider.is_suspicious or rider.fraud_score > 70:
+            status = 'attack' if rider.fraud_score > 90 else 'spoofing'
+            risk = 'extreme' if rider.fraud_score > 90 else 'high'
+            
+        nodes.append({
+            "id": f"R-{rider.id}",
+            "name": rider.name,
+            "lat": zone.lat + lat_offset,
+            "lng": zone.lng + lng_offset,
+            "type": "rider",
+            "risk": risk,
+            "status": status,
+            "location": zone.name
+        })
+        
+    return {"city_center": [city.lat, city.lng], "nodes": nodes}

@@ -30,7 +30,7 @@ const riderFeed = [
 
 export default function AdminDashboard() {
   return (
-    <div className="w-full max-w-7xl mx-auto p-6 pt-10">
+    <div className="w-full max-w-7xl mx-auto p-4 md:p-6">
       <motion.div 
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -39,8 +39,8 @@ export default function AdminDashboard() {
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight mb-2 text-white/90">Platform Operations</h1>
-            <p className="text-gray-400 font-medium">Live risk monitoring and parametric claims processing.</p>
+            <h1 className="text-3xl font-bold tracking-tight mb-2 text-foreground">Platform Operations</h1>
+            <p className="text-muted-foreground font-medium">Live risk monitoring and parametric claims processing.</p>
           </div>
           <div className="px-3 py-1.5 bg-[#10a37f]/10 border border-[#10a37f]/20 rounded-full text-xs font-mono text-[#10a37f] flex items-center gap-2">
             <span className="relative flex h-2 w-2">
@@ -53,33 +53,36 @@ export default function AdminDashboard() {
 
         {/* Top KPIs Grid */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="glass-panel p-6 flex flex-col justify-between hover:bg-white/10 transition-colors">
-            <span className="text-sm font-semibold text-gray-400 mb-4 tracking-wide uppercase">Active Riders</span>
+          <div className="rounded-xl border bg-card p-6 flex flex-col justify-between hover:bg-accent/50 transition-colors shadow-sm">
+            <span className="text-sm font-semibold text-muted-foreground mb-4 tracking-wide uppercase">Active Riders</span>
             <div className="flex items-baseline gap-1">
-              <AnimatedCounter value={2418} className="text-4xl font-bold tracking-tighter" />
-              <span className="text-[#10a37f] text-sm ml-2.5 font-medium">+12%</span>
+              <AnimatedCounter value={13000} className="text-4xl font-bold tracking-tighter text-foreground" />
+              <span className="text-[#10a37f] text-sm ml-2.5 font-medium">PAN India</span>
             </div>
+            <span className="text-xs text-muted-foreground mt-2">13 cities · 3 tiers</span>
           </div>
-          <div className="glass-panel p-6 flex flex-col justify-between hover:bg-white/10 transition-colors">
-            <span className="text-sm font-semibold text-gray-400 mb-4 tracking-wide uppercase">Active Protections</span>
+          <div className="rounded-xl border bg-card p-6 flex flex-col justify-between hover:bg-accent/50 transition-colors shadow-sm">
+            <span className="text-sm font-semibold text-muted-foreground mb-4 tracking-wide uppercase">Active Protections</span>
             <div className="flex items-baseline gap-1">
-              <AnimatedCounter value={980} className="text-4xl font-bold tracking-tighter" />
+              <AnimatedCounter value={9360} className="text-4xl font-bold tracking-tighter text-foreground" />
             </div>
+            <span className="text-xs text-muted-foreground mt-2">72% coverage rate</span>
           </div>
-          <div className="glass-panel p-6 flex flex-col justify-between hover:bg-white/10 transition-colors">
-            <span className="text-sm font-semibold text-gray-400 mb-4 tracking-wide uppercase">Est. Payout Pool</span>
+          <div className="rounded-xl border bg-card p-6 flex flex-col justify-between hover:bg-accent/50 transition-colors shadow-sm">
+            <span className="text-sm font-semibold text-muted-foreground mb-4 tracking-wide uppercase">Est. Payout Pool</span>
             <div className="flex items-baseline gap-1">
-              <span className="text-2xl text-white/50">₹</span>
-              <AnimatedCounter value={1950000} className="text-4xl font-bold tracking-tighter" />
+              <span className="text-2xl text-muted-foreground">₹</span>
+              <AnimatedCounter value={4880000} className="text-4xl font-bold tracking-tighter text-foreground" />
             </div>
+            <span className="text-xs text-muted-foreground mt-2">8-week rolling window</span>
           </div>
-          <div className="glass-panel p-6 flex flex-col justify-between border-[#ef4444]/20 bg-[linear-gradient(to_bottom_right,rgba(255,255,255,0.05),rgba(239,68,68,0.05))]">
+          <div className="rounded-xl border border-[#ef4444]/20 bg-gradient-to-br from-card to-[#ef4444]/5 p-6 flex flex-col justify-between shadow-sm">
             <div className="flex justify-between items-start mb-4">
-              <span className="text-sm font-semibold text-gray-400 tracking-wide uppercase">Triggers Alert</span>
+              <span className="text-sm font-semibold text-muted-foreground tracking-wide uppercase">Triggers Alert</span>
               <ShieldAlert className="w-5 h-5 text-[#ef4444]" />
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-2xl font-bold text-white/90">Delhi NCR</span>
+              <span className="text-2xl font-bold text-foreground">Delhi NCR</span>
               <span className="text-[#ef4444] text-xs font-medium bg-[#ef4444]/20 w-fit px-2 py-0.5 rounded-sm">Heavy Rain &gt; 64mm</span>
             </div>
           </div>
@@ -87,8 +90,8 @@ export default function AdminDashboard() {
 
         {/* Main Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 glass-panel p-6 min-w-0">
-            <h2 className="text-lg font-semibold text-white/80 mb-6">Disruption Risk vs Fleet Capacity</h2>
+          <div className="lg:col-span-2 rounded-xl border bg-card p-6 min-w-0 shadow-sm">
+            <h2 className="text-lg font-semibold text-foreground mb-6">Disruption Risk vs Fleet Capacity</h2>
             <div className="h-[300px] w-full min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={hourlyData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
@@ -102,12 +105,12 @@ export default function AdminDashboard() {
                       <stop offset="95%" stopColor="#10a37f" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                  <XAxis dataKey="time" stroke="#a1a1aa" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#a1a1aa" fontSize={12} tickLine={false} axisLine={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                  <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#1c1c1e', borderColor: '#27272a', borderRadius: '8px' }}
-                    itemStyle={{ color: '#f2f2f3' }}
+                    contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--foreground))' }}
+                    itemStyle={{ color: 'hsl(var(--foreground))' }}
                   />
                   <Area type="monotone" dataKey="riders" name="Active Fleet" stroke="#10a37f" fillOpacity={1} fill="url(#colorRiders)" strokeWidth={2} />
                   <Area type="monotone" dataKey="risk" name="Weather Risk %" stroke="#ef4444" fillOpacity={1} fill="url(#colorRisk)" strokeWidth={2} />
@@ -117,18 +120,18 @@ export default function AdminDashboard() {
           </div>
           
           {/* Zone Rankings */}
-          <div className="glass-panel p-6 flex flex-col">
-            <h2 className="text-lg font-semibold text-white/80 mb-6">Zone Live Action</h2>
+          <div className="rounded-xl border bg-card p-6 flex flex-col shadow-sm">
+            <h2 className="text-lg font-semibold text-foreground mb-6">Zone Live Action</h2>
             <div className="flex flex-col gap-5 flex-1 justify-center">
               {zoneData.map((zone, idx) => (
                 <div key={idx} className="flex flex-col gap-2">
                   <div className="flex justify-between text-sm">
-                    <span className="font-medium text-white/90">{zone.zone}</span>
+                    <span className="font-medium text-foreground">{zone.zone}</span>
                     <span className={zone.riskScore > 80 ? "text-[#ef4444] font-semibold" : "text-[#10a37f] font-semibold"}>
                       Risk: {zone.riskScore}%
                     </span>
                   </div>
-                  <div className="w-full bg-[#27272a] rounded-full h-1.5 overflow-hidden">
+                  <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
                     <motion.div 
                       initial={{ width: 0 }}
                       animate={{ width: `${zone.riskScore}%` }}
@@ -136,7 +139,7 @@ export default function AdminDashboard() {
                       className={zone.riskScore > 80 ? "bg-[#ef4444] h-full" : "bg-[#10a37f] h-full"}
                     />
                   </div>
-                  <div className="flex justify-between text-xs text-gray-500">
+                  <div className="flex justify-between text-xs text-muted-foreground">
                     <span>{zone.active} Active Base</span>
                     <span>{zone.protected} Protected</span>
                   </div>
@@ -147,14 +150,14 @@ export default function AdminDashboard() {
         </div>
 
         {/* Live Rider Feed */}
-        <div className="glass-panel p-6 mt-2">
+        <div className="rounded-xl border bg-card p-6 mt-2 shadow-sm">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-lg font-semibold text-white/80">Live Rider Claims Feed</h2>
+            <h2 className="text-lg font-semibold text-foreground">Live Rider Claims Feed</h2>
             <button className="text-xs font-medium text-[#10a37f] hover:text-[#0ea5e9] transition-colors">View All Logs &rarr;</button>
           </div>
           <div className="w-full overflow-x-auto hide-scrollbar">
-            <table className="w-full text-left text-sm text-gray-400">
-              <thead className="text-xs text-gray-500 uppercase font-semibold border-b border-white/10">
+            <table className="w-full text-left text-sm text-muted-foreground">
+              <thead className="text-xs text-muted-foreground uppercase font-semibold border-b border-border">
                 <tr>
                   <th className="px-4 py-3">Rider ID</th>
                   <th className="px-4 py-3">Location</th>
@@ -163,18 +166,18 @@ export default function AdminDashboard() {
                   <th className="px-4 py-3 text-right">Est. Payout</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-border">
                 {riderFeed.map((rider, i) => (
-                  <tr key={i} className="hover:bg-white/5 transition-colors group">
+                  <tr key={i} className="hover:bg-accent/50 transition-colors group">
                     <td className="px-4 py-4 whitespace-nowrap">
                       <div className="flex flex-col">
-                        <span className="text-white/90 font-medium group-hover:text-[#10a37f] transition-colors">{rider.name}</span>
+                        <span className="text-foreground font-medium group-hover:text-[#10a37f] transition-colors">{rider.name}</span>
                         <span className="text-xs">{rider.id}</span>
                       </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">{rider.location}</td>
                     <td className="px-4 py-4 whitespace-nowrap">
-                      <span className="px-2.5 py-1 rounded bg-white/5 border border-white/10 text-xs text-gray-300">
+                      <span className="px-2.5 py-1 rounded bg-muted border text-xs text-muted-foreground">
                         {rider.issue}
                       </span>
                     </td>
@@ -185,8 +188,8 @@ export default function AdminDashboard() {
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-right font-mono">
                       <div className="flex flex-col items-end">
-                        <span className={rider.status === 'Protected' ? 'text-white' : 'text-gray-500'}>{rider.payout}</span>
-                        <span className="text-[10px] text-gray-600 font-sans">{rider.time}</span>
+                        <span className={rider.status === 'Protected' ? 'text-foreground' : 'text-muted-foreground'}>{rider.payout}</span>
+                        <span className="text-[10px] text-muted-foreground font-sans">{rider.time}</span>
                       </div>
                     </td>
                   </tr>

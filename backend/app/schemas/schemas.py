@@ -35,6 +35,16 @@ class PolicyStatusEnum(str, Enum):
     cancelled = "cancelled"
     waiting = "waiting"
 
+class CityTierEnum(str, Enum):
+    tier_1 = "tier_1"
+    tier_2 = "tier_2"
+    tier_3 = "tier_3"
+
+class AreaTypeEnum(str, Enum):
+    urban = "urban"
+    semi_urban = "semi_urban"
+    rural = "rural"
+
 
 # ── Auth ──
 
@@ -70,6 +80,7 @@ class CityOut(BaseModel):
     lat: float
     lng: float
     base_rate: float
+    city_tier: Optional[CityTierEnum] = None
     model_config = {"from_attributes": True}
 
 class ZoneOut(BaseModel):
@@ -77,6 +88,7 @@ class ZoneOut(BaseModel):
     city_id: int
     name: str
     tier: ZoneTierEnum
+    area_type: Optional[AreaTypeEnum] = None
     lat: float
     lng: float
     flood_risk_score: float
@@ -112,6 +124,8 @@ class RiderOut(BaseModel):
     avg_hourly_rate: float
     shield_level: int
     shield_xp: float
+    active_days_last_30: int = 0
+    activity_tier: str = "low"
     is_active: bool
     created_at: datetime
     model_config = {"from_attributes": True}
@@ -279,3 +293,40 @@ class OptimizeOut(BaseModel):
     optimized_weekly_earnings: float
     improvement_pct: float
     recommendations: List[Dict[str, Any]]
+
+
+# ── Weekly Ledger / Actuarial ──
+
+class WeeklyLedgerOut(BaseModel):
+    id: int
+    city_id: int
+    week_start: datetime
+    week_end: datetime
+    total_policies: int
+    premium_collected: float
+    total_claims: int
+    claims_approved: int
+    claims_denied: int
+    total_payout: float
+    loss_ratio: float
+    bcr: float
+    avg_claim_amount: float
+    urban_claims: int
+    semi_urban_claims: int
+    rural_claims: int
+    urban_payout: float
+    semi_urban_payout: float
+    rural_payout: float
+    model_config = {"from_attributes": True}
+
+class ActuarialSummary(BaseModel):
+    city: str
+    city_tier: str
+    total_weeks: int
+    total_premium_collected: float
+    total_payout: float
+    avg_loss_ratio: float
+    avg_bcr: float
+    sustainability_status: str  # "healthy", "watch", "critical"
+    urban_vs_rural: Dict[str, Any]
+    weekly_trend: List[Dict[str, Any]]

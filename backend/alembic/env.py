@@ -16,7 +16,8 @@ if config.config_file_name is not None:
 # Import all models so Alembic can detect them
 from app.core.database import Base
 from app.models.models import (
-    City, Zone, DarkStore, Rider, Policy, Claim, TriggerReading, PremiumRateCard
+    City, Zone, DarkStore, Rider, Policy, Claim, TriggerReading,
+    PremiumRateCard, FraudCheck, RiderActivity, WeeklyLedger,
 )
 
 target_metadata = Base.metadata

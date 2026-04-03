@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from app.api.routes import auth, riders, policies, claims, triggers, pricing, admin, fraud
+from app.api.routes import auth, riders, policies, claims, triggers, pricing, admin, fraud, payouts, underwriting, payments
 from app.core.config import settings
 from app.core.database import engine, Base
 from app.services.triggers.trigger_engine import TriggerEngine
@@ -47,6 +47,7 @@ app.add_middleware(
 )
 
 # ── Routes ──
+app.include_router(underwriting.router, prefix="/api/underwriting", tags=["Underwriting"])
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(riders.router, prefix="/api/riders", tags=["Riders"])
 app.include_router(policies.router, prefix="/api/policies", tags=["Policies"])
@@ -55,6 +56,8 @@ app.include_router(triggers.router, prefix="/api/triggers", tags=["Triggers"])
 app.include_router(pricing.router, prefix="/api/pricing", tags=["Pricing"])
 app.include_router(fraud.router, prefix="/api/fraud", tags=["Fraud Detection"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin Dashboard"])
+app.include_router(payouts.router, prefix="/api/payouts", tags=["Payouts"])
+app.include_router(payments.router, prefix="/api/payments", tags=["Payments — Razorpay"])
 
 
 @app.get("/", tags=["Health"])

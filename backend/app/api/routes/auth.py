@@ -30,7 +30,7 @@ async def register(body: RiderRegister, db: AsyncSession = Depends(get_db)):
     db.add(rider)
     await db.flush()
 
-    token = create_access_token(data={"sub": rider.id})
+    token = create_access_token(data={"sub": str(rider.id)})
     return Token(access_token=token, rider_id=rider.id, name=rider.name)
 
 
@@ -41,10 +41,25 @@ async def login(body: RiderLogin, db: AsyncSession = Depends(get_db)):
     if not rider or not verify_password(body.password, rider.password_hash):
         raise HTTPException(status_code=401, detail="Invalid phone or password")
 
-    token = create_access_token(data={"sub": rider.id})
+    token = create_access_token(data={"sub": str(rider.id)})
     return Token(access_token=token, rider_id=rider.id, name=rider.name)
 
 
 @router.get("/me", response_model=RiderOut)
 async def get_me(rider: Rider = Depends(get_current_rider)):
     return rider
+
+
+@router.post("/demo-login", response_model=Token, summary="One-click demo login (no password)")
+async def demo_login(db: AsyncSession = Depends(get_db)):
+    """
+    Hackathon demo shortcut: logs in as the first seeded rider.
+    No credentials required — just call this endpoint.
+    """
+    result = await db.execute(select(Rider).order_by(Rider.id).limit(1))
+    rider = result.scalar_one_or_none()
+    if not rider:
+        raise HTTPException(status_code=404, detail="No riders in DB. Run: python -m app.mock_data.seed_db")
+
+    token = create_access_token(data={"sub": str(rider.id)})
+    return Token(access_token=token, rider_id=rider.id, name=rider.name)
