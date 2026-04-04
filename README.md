@@ -1,12 +1,12 @@
 # FlowSecure — AI-Powered Income Protection for Quick-Commerce Delivery Workers
 
-> Phase 2 submission — fully working prototype with real backend, live simulations, Razorpay payments, 13-city PAN India data, and Monte Carlo actuarial projections.
+> Phase 2 submission — fully working prototype with real SQLite backend (13,000 riders · 13 cities · 8 weeks of real ledger data), live simulations, Razorpay sandbox payments, IMD-calibrated Monte Carlo actuarial projections, and a 9-wall real-time fraud detection system.
 
 ---
 
-## ⚡ Judge Quick-Start (5 minutes)
+## ⚡ Judge Quick-Start (2 minutes)
 
-### Option A — Shell scripts (recommended, 2 commands)
+### Option A — Shell scripts (recommended)
 
 ```bash
 # 1. Clone — git-lfs pulls the seeded DB (160MB) automatically
@@ -15,23 +15,24 @@ git clone https://github.com/RahulPothapragada/devtrails-parametric-insurance.gi
 cd devtrails-parametric-insurance
 git lfs pull          # downloads flowsecure.db (~30s)
 
-# 2. Install everything
+# 2. One-time install (Python venv + npm packages)
 ./setup.sh
 
-# 3. Run everything (backend + frontend together)
+# 3. Start both servers (Ctrl+C stops both)
 ./start.sh
 # Frontend → http://localhost:5173
 # Backend  → http://localhost:8000
 # API docs → http://localhost:8000/docs
 ```
 
-### Option B — Docker (one command, no Python/Node needed)
+### Option B — Docker (no Python/Node needed)
 
 ```bash
 git clone https://github.com/RahulPothapragada/devtrails-parametric-insurance.git
 cd devtrails-parametric-insurance && git lfs pull
 docker-compose up --build
 # Frontend → http://localhost:5173
+# Backend  → http://localhost:8000
 ```
 
 ### Option C — Manual (if git-lfs unavailable)
@@ -48,18 +49,54 @@ uvicorn app.main:app --reload --port 8000
 cd ../frontend && npm install && npm run dev
 ```
 
-> **`.env` is included** with test/dev values — no configuration needed. Razorpay test mode, SQLite database, mock weather/AQI all work out of the box.
+> **Zero configuration needed.** `.env` is committed with working SQLite URL + Razorpay test keys. No Postgres, no Redis, no external services required.
 
-### Key pages to demo
-| Page | URL | What it shows |
-|------|-----|---------------|
-| Simulate | `/simulate` | Inject live weather/AQI/traffic triggers |
-| Fraud Graph | `/graph` | Real-time geospatial fraud detection map |
-| 9-Wall Defense | `/fraud` | 20% anomaly rate, 9 syndicate rings live feed |
-| Admin | `/admin` | Platform BCR, 13-city health, real DB metrics |
-| Data Timeline | `/data` | 1yr history + live sim + 12-week Monte Carlo |
-| Rider | `/rider` | Buy weekly cover (Razorpay sandbox payment) |
-| Payouts | `/payouts` | Parametric claim history |
+---
+
+## 🗂️ What's Built
+
+### Frontend Pages
+| Page | Route | What it shows |
+|------|-------|---------------|
+| Landing | `/` | Product overview, hero demo |
+| Rider Dashboard | `/rider` | Weekly forecast, AI shift optimizer, buy cover via Razorpay |
+| Simulation | `/simulate` | Inject live weather/AQI/traffic triggers, watch auto-payouts fire |
+| Fraud Graph | `/graph` | Geospatial map of 400+ riders per city, real-time anomaly detection |
+| 9-Wall Defense | `/fraud` | Live sensor feed — 20% anomaly rate, 9 syndicate rings, ₹1.24L blocked |
+| Admin Dashboard | `/admin` | Platform BCR, 13-city health table, real DB premiums vs payouts |
+| Data Timeline | `/data` | 1-year simulated history + 8 real DB weeks + live tick + 12-week Monte Carlo |
+| Actuarial | `/actuarial` | Per-city loss ratios, sustainability ratings, pricing model |
+| Payouts | `/payouts` | Parametric claim history and UPI payout trigger |
+| Story Mode | `/story` | Guided walkthrough of a disruption event end-to-end |
+
+### Backend API Routes
+| Route prefix | What it handles |
+|---|---|
+| `/api/auth` | Rider JWT login/register |
+| `/api/riders` | Rider profile, dashboard, AI optimize |
+| `/api/policies` | Weekly cover purchase, active policy lookup |
+| `/api/claims` | Parametric trigger → auto-claim → auto-approve |
+| `/api/payouts` | Razorpay payout initiation + confirmation |
+| `/api/payments` | Razorpay order creation + webhook |
+| `/api/triggers` | Weather/AQI/traffic trigger injection (simulation) |
+| `/api/pricing` | Dynamic premium calculation by city/zone/tier |
+| `/api/underwriting` | BCR-based suspension rules |
+| `/api/fraud` | Fraud score, anomaly flags |
+| `/api/admin` | Platform stats, actuarial, weekly ledger, maps, fraud summary |
+| `/api/data` | Data Timeline — simulated history + real DB + Monte Carlo projection |
+
+### Database (SQLite — 160MB seeded)
+| Table | Records | Notes |
+|-------|---------|-------|
+| riders | 13,000 | 13 cities, activity tiers, fraud scores, device fingerprints |
+| zones | ~130 | Per-city delivery zones with flood/heat risk scores |
+| cities | 13 | Mumbai, Delhi, Bangalore, Chennai, Kolkata, Pune, Hyderabad, Ahmedabad, Jaipur, Lucknow, Indore, Patna, Bhopal |
+| policies | 13,000 | Weekly cover, premium amounts |
+| claims | ~11,000 | Auto-approved parametric claims |
+| weekly_ledgers | 104 | 8 weeks × 13 cities — real premium/payout/BCR data |
+| trigger_readings | ~500 | Simulated weather/AQI/traffic events |
+
+---
 
 ---
 
@@ -112,12 +149,17 @@ But unlike traditional insurance, FlowSecure does not just pay you after you los
 
 | Component | Status | Description |
 |-----------|--------|-------------|
-| Mathematical Model | ✅ Designed | Dynamic premium calculations, loss-ratio framework, and zone-tier pricing with real-world data sources |
-| Fraud Detection Logic | ✅ Designed | 9-wall layered adversarial defense architecture (Tier A data-native + Tier B mock trails) |
-| System Architecture | ✅ Drafted | API design, data flow blueprints, Mermaid diagrams, and service boundaries defined |
-| AI Strategy | ✅ Designed | 3-layer Predict → Optimize → Protect pipeline with rule-based engines |
-| Adversarial Defense | ✅ Designed | Market Crash scenario response with step-by-step attack neutralization |
-| Backend / Frontend | 🛠️ Planned | Folder structure represents the proposed modular implementation |
+| Mathematical Model | ✅ Live | Dynamic premium by city/zone/tier, IMD-calibrated loss-ratio framework, BCR suspension at 85% |
+| Fraud Detection | ✅ Live | 9-wall adversarial defense — 20% anomaly rate on 13,000 riders, 9 device-sharing syndicates detected, ₹1.24L blocked |
+| Actuarial Projections | ✅ Live | Monte Carlo (500 paths × 12 weeks), P10/P50/P90 confidence bands, seasonal multipliers per IMD calendar |
+| Data Timeline | ✅ Live | 1-year simulated history + 8 real DB weeks + live 15s tick + 12-week forward projection |
+| Geospatial Fraud Map | ✅ Live | 400-rider network graph per city, attack/spoofing node classification, syndicate ring links |
+| Parametric Claims | ✅ Live | Trigger injection → auto-detect → auto-approve → UPI payout via Razorpay |
+| Rider Dashboard | ✅ Live | Weekly disruption forecast, AI shift optimizer, weekly cover purchase |
+| PAN India Coverage | ✅ Live | 13 cities, 3 tiers, 8 weeks of real ledger data, city-specific BCR and risk scores |
+| Backend API | ✅ Live | 12 route modules, FastAPI + SQLite (aiosqlite), fully async, 40+ endpoints |
+| Frontend | ✅ Live | React + TypeScript + Recharts + Leaflet, 10 pages, dark theme |
+| Zero-Config Setup | ✅ Live | `.env` committed, SQLite default, `./setup.sh` + `./start.sh` or `docker-compose up` |
 
 ---
 
