@@ -1,11 +1,17 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldAlert, Activity, Info, Map as MapIcon, Layers, Radio, Crosshair, ChevronRight, AlertCircle } from 'lucide-react';
+import {
+  ShieldAlert, ShieldCheck, Activity, Info, Map as MapIcon, Layers, Radio,
+  Crosshair, ChevronRight, AlertCircle, Zap, CheckCircle2, Clock,
+  Users, GitBranch, MapPin, Wifi, Smartphone, AlertTriangle, RotateCcw, Eye,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { type Scenario, type SimEvent } from '../data/simulationData';
 
 // Fix Leaflet icon issue
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -54,33 +60,159 @@ const CITIES = [
 ];
 
 
+// ── Pre-seeded nodes — map renders instantly, API refreshes in background ──
+function makeSeed(city: typeof CITIES[0]) {
+  const tower = { id: `T-${city.id}`, name: `${city.name} Central Hub`, type: 'tower', lat: city.lat, lng: city.lng };
+  const statuses = ['normal','normal','normal','normal','spoofing','attack'];
+  const verdicts: Record<string,string> = {
+    normal: 'Nominal Signal Pattern',
+    spoofing: 'High Risk Location Mismatch',
+    attack: 'CRITICAL: Shared Device Array (Emulation)',
+  };
+  const offsets = [
+    [-0.008,0.01],[0.012,-0.005],[0.005,0.015],[-0.015,0.003],[0.009,-0.012],
+    [-0.003,0.018],[0.018,0.002],[-0.012,-0.009],[0.007,0.007],[-0.007,-0.015],
+    [0.014,0.011],[-0.011,0.013],[0.003,-0.018],[0.016,-0.007],[-0.009,0.005],
+    [0.001,0.019],[-0.017,0.001],[0.011,-0.014],[-0.004,0.012],[0.019,0.004],
+  ];
+  const riders = offsets.map((off, i) => {
+    const st = statuses[i % statuses.length];
+    return {
+      id: `R-seed-${city.id}-${i}`,
+      name: `Rider ${i+1}`,
+      type: 'rider',
+      lat: city.lat + off[0],
+      lng: city.lng + off[1],
+      status: st,
+      risk: st === 'attack' ? 'extreme' : st === 'spoofing' ? 'high' : 'low',
+      fraud_score: st === 'attack' ? 95 : st === 'spoofing' ? 72 : 12,
+      verdict: verdicts[st],
+    };
+  });
+  return [tower, ...riders];
+}
+
+// ── Pipeline phases ──────────────────────────────────────────
+const PIPELINE_PHASES = [
+  { key: 'detecting', label: 'Detecting Disruption', icon: <Zap className="w-3.5 h-3.5" />,        pct: 22  },
+  { key: 'consensus', label: 'Source Consensus',     icon: <Radio className="w-3.5 h-3.5" />,       pct: 48  },
+  { key: 'defense',   label: '9-Wall Defense',       icon: <ShieldAlert className="w-3.5 h-3.5" />, pct: 80  },
+  { key: 'payout',    label: 'Executing Payouts',    icon: <CheckCircle2 className="w-3.5 h-3.5" />, pct: 100 },
+];
+
+const phaseConfig: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
+  trigger:    { icon: <Zap className="w-4 h-4" />,        color: '#ef4444', label: 'TRIGGER'  },
+  consensus:  { icon: <Radio className="w-4 h-4" />,      color: '#3b82f6', label: 'VERIFY'   },
+  claims:     { icon: <Users className="w-4 h-4" />,      color: '#f59e0b', label: 'CLAIMS'   },
+  fraud_wall: { icon: <ShieldAlert className="w-4 h-4" />,color: '#8b5cf6', label: 'DEFENSE'  },
+  result:     { icon: <Eye className="w-4 h-4" />,        color: '#10a37f', label: 'VERDICT'  },
+  payout:     { icon: <CheckCircle2 className="w-4 h-4" />,color: '#10a37f', label: 'PAYOUT'  },
+};
+
+const wallIcons: Record<number, React.ReactNode> = {
+  1: <Activity className="w-3.5 h-3.5" />,
+  2: <Smartphone className="w-3.5 h-3.5" />,
+  3: <Wifi className="w-3.5 h-3.5" />,
+  4: <Users className="w-3.5 h-3.5" />,
+  5: <GitBranch className="w-3.5 h-3.5" />,
+  6: <Clock className="w-3.5 h-3.5" />,
+  7: <MapPin className="w-3.5 h-3.5" />,
+};
+
 function MapController({ center }: { center: [number, number] }) {
   const map = useMap();
-  useEffect(() => {
-    map.invalidateSize();
-  }, [map]);
-  useEffect(() => {
-    map.flyTo(center, 13, { duration: 2.5, easeLinearity: 0.25 });
-  }, [center, map]);
+  useEffect(() => { map.invalidateSize(); }, [map]);
+  useEffect(() => { map.flyTo(center, 13, { duration: 2.5, easeLinearity: 0.25 }); }, [center, map]);
   return null;
 }
 
 export default function FraudGraphPage() {
-  const [activeCity, setActiveCity] = useState(CITIES[0]);
-  const [nodes, setNodes] = useState<any[]>([]);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const incomingScenario: Scenario | null = location.state?.scenario ?? null;
+
+  const [activeCity, setActiveCity] = useState(() =>
+    incomingScenario ? CITIES.find(c => c.id === incomingScenario.cityId) ?? CITIES[0] : CITIES[0]
+  );
+  const [nodes, setNodes]               = useState<any[]>(() => makeSeed(activeCity));
   const [selectedNode, setSelectedNode] = useState<any>(null);
-  const [mapStyle, setMapStyle] = useState<'dark' | 'satellite'>('dark');
-  const [showRadius, setShowRadius] = useState(true);
-  const [loading, setLoading] = useState(false);
+  const [mapStyle, setMapStyle]         = useState<'dark' | 'satellite'>('dark');
+  const [showRadius, setShowRadius]     = useState(true);
+  const [loading, setLoading]           = useState(false);
+
+  // ── Simulation state ──────────────────────────────────────
+  const [scenario, setScenario]         = useState<Scenario | null>(incomingScenario);
+  const [simProgress, setSimProgress]   = useState(0);
+  const [simRunning, setSimRunning]     = useState(!!incomingScenario);
+  const [simComplete, setSimComplete]   = useState(false);
+  const [simEvents, setSimEvents]       = useState<SimEvent[]>([]);
+  const [wallStatuses, setWallStatuses] = useState<Record<number,'idle'|'scanning'|'pass'|'fail'>>({});
+  const evtEndRef      = useRef<HTMLDivElement>(null);
+  const evtIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const progIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    evtEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [simEvents]);
+
+  // Run simulation pipeline whenever a scenario is set
+  useEffect(() => {
+    if (!scenario) return;
+    setSimRunning(true); setSimComplete(false);
+    setSimProgress(0);   setSimEvents([]);
+    setWallStatuses({ 1:'idle',2:'idle',3:'idle',4:'idle',5:'idle',6:'idle',7:'idle' });
+
+    let idx = 0;
+    evtIntervalRef.current = setInterval(() => {
+      if (idx < scenario.events.length) {
+        const evt = scenario.events[idx];
+        setSimEvents(prev => prev.some(e => e.id === evt.id) ? prev : [...prev, evt]);
+        if (evt.phase === 'fraud_wall' && evt.wallNumber) {
+          const wn = evt.wallNumber;
+          setWallStatuses(prev => ({ ...prev, [wn]: 'scanning' }));
+          setTimeout(() => setWallStatuses(prev => ({ ...prev, [wn]: evt.status === 'success' ? 'pass' : 'fail' })), 600);
+        }
+        idx++;
+      } else clearInterval(evtIntervalRef.current!);
+    }, 1200);
+
+    progIntervalRef.current = setInterval(() => {
+      setSimProgress(p => {
+        if (p >= 100) {
+          clearInterval(progIntervalRef.current!);
+          setSimRunning(false); setSimComplete(true);
+          setTimeout(() => navigate('/payouts'), 2200);
+          return 100;
+        }
+        return p + 2;
+      });
+    }, 50);
+
+    return () => {
+      clearInterval(evtIntervalRef.current!);
+      clearInterval(progIntervalRef.current!);
+    };
+  }, [scenario?.id]);
+
+  const resetSim = () => {
+    clearInterval(evtIntervalRef.current!);
+    clearInterval(progIntervalRef.current!);
+    setScenario(null); setSimRunning(false); setSimComplete(false);
+    setSimProgress(0); setSimEvents([]); setWallStatuses({});
+    navigate('/simulate');
+  };
+
+  // ── Regular map fetch ─────────────────────────────────────
+  useEffect(() => {
+    setNodes(makeSeed(activeCity));
+    setSelectedNode(null);
     async function fetchLiveNetwork() {
       setLoading(true);
       try {
         const response = await fetch(`http://127.0.0.1:8000/api/admin/maps/network?city_name=${activeCity.id}`);
         if (!response.ok) throw new Error('Network Database Offline');
         const payload = await response.json();
-        // Insert a simulated Cell Tower node at the true city center for aesthetic radar effect
         const baseTower = { id: `T-${activeCity.id}`, name: `${activeCity.name} Central Hub`, type: 'tower', lat: payload.city_center[0], lng: payload.city_center[1] };
         setNodes([baseTower, ...payload.nodes]);
       } catch (err) {
@@ -90,7 +222,6 @@ export default function FraudGraphPage() {
       }
     }
     fetchLiveNetwork();
-    setSelectedNode(null);
   }, [activeCity]);
 
 
@@ -108,19 +239,194 @@ export default function FraudGraphPage() {
     };
   }, [nodes]);
 
+  // Current pipeline phase label
+  const currentPhase = PIPELINE_PHASES.find(ph => simProgress < ph.pct) ?? PIPELINE_PHASES[3];
+
   return (
-    <div className="flex h-[calc(100vh-4rem)] w-full overflow-hidden">
+    <div className={cn("flex flex-col h-[calc(100vh-4rem)] w-full overflow-hidden", scenario && "border-t-2", scenario?.weatherType === 'rain' && 'border-blue-500/50', scenario?.weatherType === 'heatwave' && 'border-orange-500/50', scenario?.weatherType === 'bandh' && 'border-red-500/50', scenario?.weatherType === 'attack' && 'border-red-700/50')}>
+
+      {/* ── Simulation top header bar (only when scenario active) ── */}
+      <AnimatePresence>
+        {scenario && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="shrink-0 border-b bg-card z-20"
+          >
+            <div className="flex items-center justify-between px-4 py-2.5 gap-4">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{scenario.icon}</span>
+                <div>
+                  <p className="text-sm font-bold text-foreground leading-none">{scenario.title}</p>
+                  <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{scenario.location} · {scenario.triggerType}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 flex-1 max-w-xl">
+                {/* Mini pipeline phases */}
+                <div className="flex items-center gap-1 flex-1">
+                  {PIPELINE_PHASES.map((ph, i) => {
+                    const done    = simProgress >= ph.pct;
+                    const active  = !done && (i === 0 || simProgress >= PIPELINE_PHASES[i-1].pct);
+                    return (
+                      <div key={ph.key} className="flex items-center gap-1 flex-1">
+                        <div className={cn(
+                          'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all duration-500 whitespace-nowrap',
+                          done   && 'bg-primary/15 text-primary border border-primary/30',
+                          active && 'bg-amber-500/15 text-amber-400 border border-amber-500/30 pipeline-step-active',
+                          !done && !active && 'bg-muted text-muted-foreground border border-transparent',
+                        )}>
+                          {ph.icon} {ph.label}
+                        </div>
+                        {i < PIPELINE_PHASES.length - 1 && (
+                          <div className={cn('h-px flex-1 rounded transition-all duration-700', done ? 'bg-primary/50' : 'bg-border')} />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <span className="text-xs font-mono font-bold text-foreground tabular-nums w-10 text-right">{simProgress}%</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {simRunning && (
+                  <span className="px-3 py-1 bg-destructive/10 border border-destructive/20 rounded-full text-[10px] font-bold text-destructive flex items-center gap-1.5 animate-pulse">
+                    <span className="w-1.5 h-1.5 rounded-full bg-destructive inline-block" />
+                    LIVE
+                  </span>
+                )}
+                {simComplete && (
+                  <span className="px-3 py-1 bg-primary/10 border border-primary/20 rounded-full text-[10px] font-bold text-primary flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3 h-3" /> COMPLETE
+                  </span>
+                )}
+                <Button variant="outline" size="sm" onClick={resetSim} className="h-7 rounded-full text-xs px-3 font-bold">
+                  <RotateCcw className="w-3 h-3 mr-1.5" /> Reset
+                </Button>
+              </div>
+            </div>
+            {/* Progress bar */}
+            <div className="h-0.5 w-full bg-muted">
+              <motion.div
+                className={cn('h-full transition-colors duration-500',
+                  simComplete ? 'bg-primary' :
+                  scenario.weatherType === 'rain'     ? 'bg-blue-400' :
+                  scenario.weatherType === 'heatwave' ? 'bg-orange-400' :
+                  scenario.weatherType === 'attack'   ? 'bg-red-500' : 'bg-red-400'
+                )}
+                animate={{ width: `${simProgress}%` }}
+                transition={{ duration: 0.1 }}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="flex flex-1 overflow-hidden">
       {/* Sidebar Controls */}
-      <div className="w-80 border-r bg-card flex flex-col shadow-sm z-10 shrink-0">
+      <div className={cn("border-r bg-card flex flex-col shadow-sm z-10 shrink-0 transition-all duration-300", scenario ? "w-96" : "w-80")}>
         <div className="p-6 border-b bg-muted/20">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2.5 rounded-xl bg-primary/10 border border-primary/20">
                <ShieldAlert className="w-5 h-5 text-primary" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground">Fraud Network</h1>
+            <h1 className="text-xl font-bold tracking-tight text-foreground">{scenario ? 'Live Pipeline' : 'Fraud Network'}</h1>
           </div>
           <p className="text-xs text-muted-foreground font-medium">Real-time geospatial anomaly detection.</p>
         </div>
+
+        {/* ── Simulation events log (replaces normal sidebar content when scenario active) ── */}
+        {scenario ? (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Wall statuses */}
+            <div className="p-4 border-b shrink-0">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">Adversarial Defense Core</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[1,2,3,4,5,6,7].map(n => {
+                  const st = wallStatuses[n] || 'idle';
+                  return (
+                    <div key={n} className={cn(
+                      'flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[10px] font-bold transition-all duration-500',
+                      st === 'idle'     && 'bg-muted border-border text-muted-foreground',
+                      st === 'scanning' && 'bg-amber-500/10 border-amber-500/40 text-amber-400 animate-pulse',
+                      st === 'pass'     && 'bg-primary/10 border-primary/30 text-primary',
+                      st === 'fail'     && 'bg-destructive/10 border-destructive/30 text-destructive',
+                    )}>
+                      {wallIcons[n]}
+                      <span>Wall {n}</span>
+                      {st === 'pass' && <ShieldCheck className="w-3 h-3 ml-auto" />}
+                      {st === 'fail' && <ShieldAlert className="w-3 h-3 ml-auto" />}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Events stream */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+              <AnimatePresence>
+                {simEvents.map(evt => {
+                  const cfg = phaseConfig[evt.phase];
+                  return (
+                    <motion.div
+                      key={evt.id}
+                      initial={{ opacity: 0, x: -12, height: 0 }}
+                      animate={{ opacity: 1, x: 0, height: 'auto' }}
+                      transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+                      className={cn(
+                        'p-3 rounded-xl border text-xs shadow-sm',
+                        evt.status === 'success' && 'bg-primary/5 border-primary/20',
+                        evt.status === 'danger'  && 'bg-destructive/5 border-destructive/20',
+                        evt.status === 'warning' && 'bg-amber-500/5 border-amber-500/20',
+                        evt.status === 'info'    && 'bg-blue-500/5 border-blue-500/20',
+                      )}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="text-muted-foreground font-mono text-[10px]">{evt.timestamp}</span>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full border font-bold uppercase tracking-wide flex items-center gap-1"
+                          style={{ color: cfg.color, borderColor: `${cfg.color}40`, backgroundColor: `${cfg.color}15` }}>
+                          {cfg.icon}{cfg.label}
+                        </span>
+                      </div>
+                      <p className="font-bold text-foreground leading-snug">{evt.title}</p>
+                      <p className="text-muted-foreground leading-relaxed mt-0.5">{evt.description}</p>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+              <div ref={evtEndRef} />
+            </div>
+
+            {/* Settlement outcome */}
+            {simComplete && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-4 border-t bg-primary/5 shrink-0 space-y-3"
+              >
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Settlement Outcome</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">Genuine Paid</p>
+                    <p className="text-xl font-bold text-primary font-mono">{scenario.genuineRiders}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">Fraud Blocked</p>
+                    <p className="text-xl font-bold text-destructive font-mono">{scenario.fraudRiders}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">Disbursed</p>
+                    <p className="text-sm font-bold text-foreground">{scenario.totalPayout}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">Saved</p>
+                    <p className="text-sm font-bold text-destructive">{scenario.totalBlocked}</p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground font-mono animate-pulse">↗ Redirecting to wallet…</p>
+              </motion.div>
+            )}
+          </div>
+        ) : (
 
         <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
           {/* Stats Bar */}
@@ -228,6 +534,7 @@ export default function FraudGraphPage() {
           </div>
 
         </div>
+        )}
 
         {/* Legend */}
         <div className="p-6 bg-muted/20 border-t border-border">
@@ -247,6 +554,36 @@ export default function FraudGraphPage() {
 
       {/* Main Map View */}
       <div className="flex-1 relative bg-muted">
+        {/* Weather overlay — sits over the map tile layer */}
+        {scenario && (
+          <div className={`weather-overlay-${scenario.weatherType}`} />
+        )}
+
+        {/* Completion success banner over the map */}
+        <AnimatePresence>
+          {simComplete && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="absolute top-4 left-1/2 -translate-x-1/2 z-[1100] pointer-events-none"
+            >
+              <div className={cn(
+                'flex items-center gap-3 px-5 py-3 rounded-2xl border shadow-2xl backdrop-blur-xl font-bold text-sm',
+                scenario?.weatherType === 'attack'
+                  ? 'bg-destructive/90 border-destructive text-white'
+                  : 'bg-primary/90 border-primary text-white'
+              )}>
+                <CheckCircle2 className="w-5 h-5 shrink-0" />
+                <span>
+                  {scenario?.genuineRiders} riders paid · {scenario?.fraudRiders} blocked ·{' '}
+                  {scenario?.totalPayout} disbursed
+                </span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <MapContainer 
           center={[activeCity.lat, activeCity.lng]} 
           zoom={13} 

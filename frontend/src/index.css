@@ -197,3 +197,145 @@
 .leaflet-container {
   font-family: var(--font-sans) !important;
 }
+
+/* ── Weather Simulation Overlays ───────────────────────────── */
+
+/* Rain */
+.weather-overlay-rain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 500;
+  overflow: hidden;
+  background: linear-gradient(to bottom, rgba(59,130,246,0.06), rgba(59,130,246,0.02));
+}
+.weather-overlay-rain::before {
+  content: '';
+  position: absolute;
+  inset: -100%;
+  background-image:
+    repeating-linear-gradient(
+      108deg,
+      transparent 0,
+      transparent 6px,
+      rgba(147,197,253,0.22) 6px,
+      rgba(147,197,253,0.22) 7px
+    );
+  animation: rain-fall 0.45s linear infinite;
+}
+.weather-overlay-rain::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 0%, rgba(96,165,250,0.18) 0%, transparent 70%);
+}
+@keyframes rain-fall {
+  0%   { transform: translateY(-40%) translateX(0); }
+  100% { transform: translateY(10%)  translateX(-20px); }
+}
+
+/* Heatwave */
+.weather-overlay-heatwave {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 500;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 30%, rgba(239,68,68,0.14) 0%, rgba(251,146,60,0.07) 50%, transparent 75%);
+  animation: heat-pulse 2.4s ease-in-out infinite;
+}
+.weather-overlay-heatwave::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    180deg,
+    transparent 0,
+    transparent 3px,
+    rgba(251,146,60,0.04) 3px,
+    rgba(251,146,60,0.04) 4px
+  );
+  animation: heat-shimmer 3s ease-in-out infinite alternate;
+}
+@keyframes heat-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%       { opacity: 1;    }
+}
+@keyframes heat-shimmer {
+  0%   { background-position: 0 0;   }
+  100% { background-position: 0 40px;}
+}
+
+/* Bandh (city lockdown) */
+.weather-overlay-bandh {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 500;
+  background: rgba(15,15,15,0.35);
+  animation: bandh-flicker 4s ease-in-out infinite;
+}
+.weather-overlay-bandh::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0,
+    transparent 3px,
+    rgba(239,68,68,0.04) 3px,
+    rgba(239,68,68,0.04) 4px
+  );
+}
+@keyframes bandh-flicker {
+  0%, 100% { opacity: 0.7; }
+  48%       { opacity: 0.7; }
+  50%       { opacity: 0.5; }
+  52%       { opacity: 0.7; }
+}
+
+/* Attack (threat pulse) */
+.weather-overlay-attack {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 500;
+  overflow: hidden;
+}
+.weather-overlay-attack::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 50%, rgba(239,68,68,0.18) 0%, transparent 70%);
+  animation: attack-pulse 1.2s ease-in-out infinite;
+}
+.weather-overlay-attack::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0,
+    transparent 8px,
+    rgba(239,68,68,0.05) 8px,
+    rgba(239,68,68,0.05) 9px
+  );
+  animation: attack-scan 2s linear infinite;
+}
+@keyframes attack-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(1);    }
+  50%       { opacity: 1;   transform: scale(1.04); }
+}
+@keyframes attack-scan {
+  0%   { background-position: 0 0;    }
+  100% { background-position: 40px 0; }
+}
+
+/* Pipeline step pulse */
+.pipeline-step-active {
+  animation: step-pulse 1.4s ease-in-out infinite;
+}
+@keyframes step-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16,163,127,0); }
+  50%       { box-shadow: 0 0 0 6px rgba(16,163,127,0.2); }
+}
