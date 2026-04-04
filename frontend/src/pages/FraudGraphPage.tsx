@@ -707,5 +707,6 @@ export default function FraudGraphPage() {
         </AnimatePresence>
       </div>
     </div>
+  </div>
   );
 }
