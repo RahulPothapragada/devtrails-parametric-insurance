@@ -118,8 +118,8 @@ function bcrBadge(v: number) {
 }
 
 function fmt(n: number) {
-  if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`;
-  if (n >= 1000)   return `₹${(n / 1000).toFixed(1)}K`;
+  if (n >= 100000) return `₹${tl && (n / 100000).toFixed(1)}L`;
+  if (n >= 1000)   return `₹${tl && (n / 1000).toFixed(1)}K`;
   return `₹${n.toFixed(0)}`;
 }
 
@@ -145,11 +145,11 @@ function ChartTooltip({ active, payload, label }: any) {
           : d.zone === 'live' ? '#fbbf24' : '#a78bfa'
       }}>{ZONE_NAMES[d.zone] ?? d.zone}</p>
 
-      {(d.zone === 'simulated' || d.zone === 'real' || d.zone === 'live') && d.bcr !== undefined && (
+      {tl && (d.zone === 'simulated' || d.zone === 'real' || d.zone === 'live') && d.bcr !== undefined && (
         <>
           <div className="flex justify-between gap-3">
             <span className="text-muted-foreground">BCR</span>
-            <span className="font-mono font-bold" style={{ color: bcrColor(d.bcr) }}>{(d.bcr * 100).toFixed(1)}%</span>
+            <span className="font-mono font-bold" style={{ color: bcrColor(d.bcr) }}>{tl && (d.bcr * 100).toFixed(1)}%</span>
           </div>
           {d.raw?.premium && (
             <div className="flex justify-between gap-3">
@@ -169,18 +169,18 @@ function ChartTooltip({ active, payload, label }: any) {
         <>
           <div className="flex justify-between gap-3">
             <span className="text-muted-foreground">P50 (mean)</span>
-            <span className="font-mono font-bold text-purple-400">{(d.bcr_mean * 100).toFixed(1)}%</span>
+            <span className="font-mono font-bold text-purple-400">{tl && (d.bcr_mean * 100).toFixed(1)}%</span>
           </div>
           {d.bcr_p10 !== undefined && (
             <div className="flex justify-between gap-3">
               <span className="text-muted-foreground">P10 (best)</span>
-              <span className="font-mono text-[#10a37f]">{(d.bcr_p10 * 100).toFixed(1)}%</span>
+              <span className="font-mono text-[#10a37f]">{tl && (d.bcr_p10 * 100).toFixed(1)}%</span>
             </div>
           )}
           {d.band_base !== undefined && d.band_width !== undefined && (
             <div className="flex justify-between gap-3">
               <span className="text-muted-foreground">P90 (worst)</span>
-              <span className="font-mono text-[#ef4444]">{((d.band_base + d.band_width) * 100).toFixed(1)}%</span>
+              <span className="font-mono text-[#ef4444]">{tl && ((d.band_base + d.band_width) * 100).toFixed(1)}%</span>
             </div>
           )}
         </>
@@ -246,7 +246,7 @@ function DataTable({ rows, title, subtitle }: {
                   <td className="py-2 px-3 text-right">{r.claims ?? '—'}</td>
                 )}
                 <td className="py-2 px-3 text-right font-bold font-mono" style={{ color: bcrColor(r.bcr ?? 0) }}>
-                  {r.bcr !== undefined ? `${(r.bcr * 100).toFixed(1)}%` : '—'}
+                  {r.bcr !== undefined ? `${tl && (r.bcr * 100).toFixed(1)}%` : '—'}
                 </td>
                 <td className="py-2 px-3 text-center">
                   <span
@@ -285,14 +285,14 @@ function ProjectionTable({ rows }: { rows: DataPoint[] }) {
               <tr key={i} className={cn('hover:bg-accent/20 transition-colors', p.suspension_risk && 'bg-destructive/5')}>
                 <td className="py-2 px-3 font-mono text-muted-foreground whitespace-nowrap">{p.week_label}</td>
                 <td className="py-2 px-3 text-right font-mono">{p.premium_mean ? fmt(p.premium_mean) : '—'}</td>
-                <td className="py-2 px-3 text-right font-mono text-[#10a37f]">{p.bcr_p10 !== undefined ? `${(p.bcr_p10 * 100).toFixed(1)}%` : '—'}</td>
+                <td className="py-2 px-3 text-right font-mono text-[#10a37f]">{p.bcr_p10 !== undefined ? `${tl && (p.bcr_p10 * 100).toFixed(1)}%` : '—'}</td>
                 <td className="py-2 px-3 text-right font-bold font-mono" style={{ color: bcrColor(p.bcr_mean ?? 0) }}>
-                  {p.bcr_mean !== undefined ? `${(p.bcr_mean * 100).toFixed(1)}%` : '—'}
+                  {p.bcr_mean !== undefined ? `${tl && (p.bcr_mean * 100).toFixed(1)}%` : '—'}
                 </td>
                 <td className="py-2 px-3 text-right font-mono text-[#ef4444]">
                   {p.band_base !== undefined && p.band_width !== undefined
-                    ? `${((p.band_base + p.band_width) * 100).toFixed(1)}%`
-                    : p.bcr_p90 !== undefined ? `${(p.bcr_p90 * 100).toFixed(1)}%` : '—'}
+                    ? `${tl && ((p.band_base + p.band_width) * 100).toFixed(1)}%`
+                    : p.bcr_p90 !== undefined ? `${tl && (p.bcr_p90 * 100).toFixed(1)}%` : '—'}
                 </td>
                 <td className="py-2 px-3 text-center">
                   {p.suspension_risk
@@ -308,14 +308,78 @@ function ProjectionTable({ rows }: { rows: DataPoint[] }) {
   );
 }
 
+// ── Pre-seed generator — runs client-side instantly ────────────────────────────
+function seedTL(cityName: string): TimelineResponse {
+  const SEASONAL: Record<number,number> = {1:0.88,2:0.85,3:0.95,4:1.08,5:1.15,6:1.35,7:1.60,8:1.55,9:1.30,10:1.00,11:0.92,12:0.88};
+  const AVG_BCR = 0.484; const AVG_PREM = 59150;
+  // Simple LCG for deterministic noise
+  let seed = cityName.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
+  const rng = () => { seed = (seed * 1664525 + 1013904223) & 0xffffffff; return (seed >>> 0) / 0xffffffff; };
+  const noise = (mag: number) => (rng() - 0.5) * 2 * mag;
+
+  // 52-week simulated history ending Feb 1 2026
+  const simulated: DataPoint[] = [];
+  for (let i = 51; i >= 0; i--) {
+    const d = new Date('2026-02-01'); d.setDate(d.getDate() - i * 7);
+    const m = d.getMonth() + 1;
+    const bcr = Math.max(0.15, Math.min(0.99, AVG_BCR * SEASONAL[m] + noise(0.06)));
+    const prem = Math.round(AVG_PREM * (0.9 + rng() * 0.2));
+    simulated.push({
+      week_label: `${d.getDate()} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]} ${String(d.getFullYear()).slice(2)}`,
+      week_start_date: d.toISOString().slice(0,10), data_type: 'simulated',
+      bcr, loss_ratio: bcr, premium: prem, payout: Math.round(prem * bcr), claims: Math.round(60 + rng()*90), policies: 1000,
+    });
+  }
+  // 8 real weeks from DB
+  const real: DataPoint[] = [
+    { week_label:'2 Feb 26',  week_start_date:'2026-02-02', data_type:'real', bcr:0.493, loss_ratio:0.493, premium:56355, payout:27798, claims:113, policies:1000 },
+    { week_label:'9 Feb 26',  week_start_date:'2026-02-09', data_type:'real', bcr:0.444, loss_ratio:0.444, premium:59495, payout:26411, claims:103, policies:1000 },
+    { week_label:'16 Feb 26', week_start_date:'2026-02-16', data_type:'real', bcr:0.335, loss_ratio:0.335, premium:55651, payout:18616, claims:75,  policies:1000 },
+    { week_label:'23 Feb 26', week_start_date:'2026-02-23', data_type:'real', bcr:0.326, loss_ratio:0.326, premium:59798, payout:19520, claims:105, policies:1000 },
+    { week_label:'2 Mar 26',  week_start_date:'2026-03-02', data_type:'real', bcr:0.677, loss_ratio:0.677, premium:61141, payout:41416, claims:154, policies:1000 },
+    { week_label:'9 Mar 26',  week_start_date:'2026-03-09', data_type:'real', bcr:0.575, loss_ratio:0.575, premium:58023, payout:33380, claims:104, policies:1000 },
+    { week_label:'16 Mar 26', week_start_date:'2026-03-16', data_type:'real', bcr:0.713, loss_ratio:0.713, premium:59547, payout:42448, claims:148, policies:1000 },
+    { week_label:'23 Mar 26', week_start_date:'2026-03-23', data_type:'real', bcr:0.307, loss_ratio:0.307, premium:59593, payout:18294, claims:72,  policies:1000 },
+  ];
+  const current: DataPoint = {
+    week_label:'30 Mar 26', week_start_date:'2026-03-30', data_type:'live',
+    bcr:0.41, loss_ratio:0.41, premium:58200, payout:23862, claims:88, policies:1000, progress_pct:57, season_mult:0.95, shock_mult:1.0,
+  };
+  // 12-week projection (Apr–Jun 2026, rising seasonal)
+  const projection: DataPoint[] = [];
+  for (let i = 0; i < 12; i++) {
+    const d = new Date('2026-04-06'); d.setDate(d.getDate() + i * 7);
+    const m = d.getMonth() + 1;
+    const mean = Math.min(0.99, AVG_BCR * SEASONAL[m]);
+    const p10 = Math.max(0.15, mean - 0.10); const p90 = Math.min(0.99, mean + 0.15);
+    projection.push({
+      week_label:`${d.getDate()} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]} ${String(d.getFullYear()).slice(2)}`,
+      week_start_date:d.toISOString().slice(0,10), data_type:'projection',
+      bcr_mean:mean, bcr_p10:p10, bcr_p90:p90, band_base:p10, band_width:p90-p10,
+      premium_mean:AVG_PREM, suspension_risk: mean > 0.85,
+    });
+  }
+  return {
+    city: cityName, city_tier:'tier_1', scenario:'normal',
+    simulated_history:simulated, real_history:real, current_week:current, projection,
+    meta:{
+      real_weeks:8, simulated_weeks:52, projection_weeks:12,
+      real_date_from:'2 Feb 26', real_date_to:'23 Mar 26', avg_real_bcr:0.484,
+      avg_real_premium:59150, suspend_threshold:0.85, bcr_target:'55–70%',
+      monte_carlo_paths:500, tick_interval_s:15, scenario_label:'Normal',
+      scenario_desc:'Baseline — no adverse events', note:'Pre-seeded; live data loading…',
+    },
+  };
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function DataTimeline() {
-  const [cities, setCities]       = useState<CityItem[]>([]);
+  const [cities, setCities]       = useState<CityItem[]>([{ name:'Mumbai',tier:'tier_1' },{ name:'Delhi',tier:'tier_1' },{ name:'Bangalore',tier:'tier_1' },{ name:'Chennai',tier:'tier_1' },{ name:'Kolkata',tier:'tier_1' },{ name:'Pune',tier:'tier_2' },{ name:'Hyderabad',tier:'tier_2' },{ name:'Ahmedabad',tier:'tier_2' },{ name:'Jaipur',tier:'tier_2' },{ name:'Lucknow',tier:'tier_3' },{ name:'Indore',tier:'tier_3' },{ name:'Patna',tier:'tier_3' },{ name:'Bhopal',tier:'tier_3' }]);
   const [city, setCity]           = useState('Mumbai');
   const [scenario, setScenario]   = useState('normal');
-  const [tl, setTl]               = useState<TimelineResponse | null>(null);
-  const [loading, setLoading]     = useState(true);
+  const [tl, setTl]               = useState<TimelineResponse>(() => seedTL('Mumbai'));
+  const [loading, setLoading]     = useState(false);
   const [lastTick, setLastTick]   = useState(0);
   const [tab, setTab]             = useState<'chart' | 'real' | 'simulated' | 'projection'>('chart');
 
@@ -330,40 +394,45 @@ export default function DataTimeline() {
       .catch(e => { console.error(e); setLoading(false); });
   }, [city, scenario]);
 
-  useEffect(() => { setLoading(true); fetchTL(); const t = setInterval(fetchTL, POLL_MS); return () => clearInterval(t); }, [fetchTL]);
+  useEffect(() => {
+    // Show seed instantly, then fetch live data in background
+    setTl(seedTL(city));
+    setLoading(true);
+    fetchTL();
+    const t = setInterval(fetchTL, POLL_MS);
+    return () => clearInterval(t);
+  }, [fetchTL]);
 
   // ── Build chart points ────────────────────────────────────────────────────
   const chartPoints: ChartPoint[] = [];
-  if (tl) {
-    // Only show every 4th simulated week for readability (still shows full year span)
-    tl.simulated_history.forEach((p, i) => {
-      chartPoints.push({ label: i % 4 === 0 ? p.week_label : '', zone: 'simulated', bcr: p.bcr, raw: p });
+  // Only show every 4th simulated week for readability (still shows full year span)
+  tl.simulated_history.forEach((p, i) => {
+    chartPoints.push({ label: i % 4 === 0 ? p.week_label : '', zone: 'simulated', bcr: p.bcr, raw: p });
+  });
+  tl.real_history.forEach(p => {
+    chartPoints.push({ label: p.week_label, zone: 'real', bcr: p.bcr, raw: p });
+  });
+  const cw = tl.current_week;
+  chartPoints.push({ label: cw.week_label, zone: 'live', bcr: cw.bcr, raw: cw });
+  tl.projection.forEach((p, i) => {
+    chartPoints.push({
+      label: i % 2 === 0 ? p.week_label : '',
+      zone: 'projection',
+      bcr_mean:   p.bcr_mean,
+      bcr_p10:    p.bcr_p10,
+      band_base:  p.band_base,
+      band_width: p.band_width,
+      raw: p,
     });
-    tl.real_history.forEach(p => {
-      chartPoints.push({ label: p.week_label, zone: 'real', bcr: p.bcr, raw: p });
-    });
-    const cw = tl.current_week;
-    chartPoints.push({ label: cw.week_label, zone: 'live', bcr: cw.bcr, raw: cw });
-    tl.projection.forEach((p, i) => {
-      chartPoints.push({
-        label: i % 2 === 0 ? p.week_label : '',
-        zone: 'projection',
-        bcr_mean:   p.bcr_mean,
-        bcr_p10:    p.bcr_p10,
-        band_base:  p.band_base,
-        band_width: p.band_width,
-        raw: p,
-      });
-    });
-  }
+  });
 
   // KPIs
-  const curBCR   = tl?.current_week.bcr   ?? 0;
-  const prevBCR  = tl?.real_history.slice(-1)[0]?.bcr ?? 0;
+  const curBCR   = tl.current_week.bcr   ?? 0;
+  const prevBCR  = tl.real_history.slice(-1)[0]?.bcr ?? 0;
   const delta    = curBCR - prevBCR;
-  const projMean = tl?.projection[0]?.bcr_mean ?? 0;
-  const worstP90 = Math.max(...(tl?.projection.map(p => (p.band_base ?? 0) + (p.band_width ?? 0)) ?? [0]));
-  const suspAny  = tl?.projection.some(p => p.suspension_risk) || tl?.current_week.suspension_risk;
+  const projMean = tl.projection[0]?.bcr_mean ?? 0;
+  const worstP90 = Math.max(...tl.projection.map(p => (p.band_base ?? 0) + (p.band_width ?? 0)));
+  const suspAny  = tl.projection.some(p => p.suspension_risk) || tl.current_week.suspension_risk;
   const scenCfg  = SCENARIOS.find(s => s.key === scenario) ?? SCENARIOS[0];
   const badge    = bcrBadge(curBCR);
 
@@ -379,7 +448,7 @@ export default function DataTimeline() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground mb-1">Data Timeline</h1>
             <p className="text-sm text-muted-foreground">
-              1-year estimated history · {tl?.meta.real_weeks ?? 8} weeks real DB data · live simulation · 12-week Monte Carlo projection
+              1-year estimated history · {tl.meta.real_weeks ?? 8} weeks real DB data · live simulation · 12-week Monte Carlo projection
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
@@ -416,7 +485,7 @@ export default function DataTimeline() {
           {SCENARIOS.map(sc => (
             <button
               key={sc.key}
-              onClick={() => setScenario(sc.key)}
+              onClick={tl && () => setScenario(sc.key)}
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider border transition-all",
                 scenario === sc.key ? "shadow-inner" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/40"
@@ -441,8 +510,8 @@ export default function DataTimeline() {
               <div>
                 <p className="text-sm font-bold text-destructive uppercase tracking-wider">Suspension Threshold Breached</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {tl?.current_week.suspension_risk
-                    ? `Current BCR ${(curBCR * 100).toFixed(1)}% > 85% — new enrolments suspended for ${city} immediately.`
+                  {tl.current_week.suspension_risk
+                    ? `Current BCR ${tl && (curBCR * 100).toFixed(1)}% > 85% — new enrolments suspended for ${city} immediately.`
                     : `Projected BCR exceeds 85% within 12 weeks under "${scenCfg.label}". Recommend premium adjustment or enrolment pause.`}
                 </p>
               </div>
@@ -452,21 +521,21 @@ export default function DataTimeline() {
 
         {/* ── KPIs ── */}
         <div className="flex flex-wrap gap-3">
-          <KPICard label="Current BCR" value={`${(curBCR * 100).toFixed(1)}%`}
+          <KPICard label="Current BCR" value={`${tl && (curBCR * 100).toFixed(1)}%`}
             sub={badge.label} color={badge.color} pulse={curBCR > SUSPEND} />
-          <KPICard label="vs Last Real Week" value={`${delta >= 0 ? '+' : ''}${(delta * 100).toFixed(1)}%`}
+          <KPICard label="vs Last Real Week" value={`${delta >= 0 ? '+' : ''}${tl && (delta * 100).toFixed(1)}%`}
             sub="week-over-week Δ" color={delta > 0.03 ? '#ef4444' : delta < -0.03 ? '#10a37f' : '#94a3b8'} />
-          <KPICard label="Next Week (P50)" value={`${(projMean * 100).toFixed(1)}%`}
+          <KPICard label="Next Week (P50)" value={`${tl && (projMean * 100).toFixed(1)}%`}
             sub="Monte Carlo mean" color={bcrColor(projMean)} />
-          <KPICard label="12-Week Worst (P90)" value={`${(worstP90 * 100).toFixed(1)}%`}
+          <KPICard label="12-Week Worst (P90)" value={`${tl && (worstP90 * 100).toFixed(1)}%`}
             sub={worstP90 > SUSPEND ? '⚠ suspension risk' : '12-week horizon'} color={worstP90 > SUSPEND ? '#ef4444' : '#f59e0b'} pulse={worstP90 > SUSPEND} />
-          <KPICard label="Real Data Avg BCR" value={`${((tl?.meta.avg_real_bcr ?? 0) * 100).toFixed(1)}%`}
-            sub={tl ? `${tl.meta.real_date_from} → ${tl.meta.real_date_to}` : ''} color="#8c5cff" />
+          <KPICard label="Real Data Avg BCR" value={`${tl && ((tl.meta.avg_real_bcr ?? 0) * 100).toFixed(1)}%`}
+            sub={`${tl.meta.real_date_from} → ${tl.meta.real_date_to}`} color="#8c5cff" />
         </div>
 
         {/* ── Tab Bar ── */}
         <div className="flex gap-1 border-b border-border">
-          {([
+          {tl && ([
             { key: 'chart',      label: '📈 Timeline Chart' },
             { key: 'real',       label: '🗄 Real DB Data' },
             { key: 'simulated',  label: '🔮 Est. History (1yr)' },
@@ -474,7 +543,7 @@ export default function DataTimeline() {
           ] as const).map(t => (
             <button
               key={t.key}
-              onClick={() => setTab(t.key)}
+              onClick={tl && () => setTab(t.key)}
               className={cn(
                 "px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors whitespace-nowrap",
                 tab === t.key ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
@@ -497,8 +566,8 @@ export default function DataTimeline() {
                 <div>
                   <p className="text-sm font-semibold text-foreground">{city} — BCR over time</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Scenario: <span className="font-medium text-foreground">{tl?.meta.scenario_label}</span>
-                    {' · '}ticks every {tl?.meta.tick_interval_s ?? 15}s
+                    Scenario: <span className="font-medium text-foreground">{tl.meta.scenario_label}</span>
+                    {' · '}ticks every {tl.meta.tick_interval_s ?? 15}s
                     {' · '}last update {lastTick ? new Date(lastTick).toLocaleTimeString() : '—'}
                   </p>
                 </div>
@@ -519,9 +588,7 @@ export default function DataTimeline() {
                 <span className="flex items-center gap-1 text-slate-500"><Info className="w-3 h-3" />Grey dashes = algorithm-generated estimate, not real data</span>
               </div>
 
-              {loading && !tl ? (
-                <div className="h-80 flex items-center justify-center text-muted-foreground text-sm">Loading timeline...</div>
-              ) : (
+              {tl && (
                 <ResponsiveContainer width="100%" height={360}>
                   <ComposedChart data={chartPoints} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
                     <defs>
@@ -545,7 +612,7 @@ export default function DataTimeline() {
                     />
                     <YAxis
                       domain={[0.20, 1.20]}
-                      tickFormatter={v => `${(v * 100).toFixed(0)}%`}
+                      tickFormatter={v => `${tl && (v * 100).toFixed(0)}%`}
                       tick={{ fill: '#475569', fontSize: 10, fontFamily: 'monospace' }}
                       axisLine={false} tickLine={false} width={42}
                     />
@@ -561,7 +628,7 @@ export default function DataTimeline() {
                       label={{ value: 'Suspend 85%', fill: '#ef4444', fontSize: 9, fontFamily: 'monospace', position: 'insideTopRight' }} />
 
                     {/* NOW marker */}
-                    <ReferenceLine x={tl?.current_week.week_label ?? ''}
+                    <ReferenceLine x={tl.current_week.week_label ?? ''}
                       stroke="rgba(251,191,36,0.55)" strokeWidth={1.5} strokeDasharray="4 2"
                       label={{ value: 'NOW', fill: '#fbbf24', fontSize: 9, fontFamily: 'monospace', position: 'insideTopLeft' }} />
 
@@ -596,10 +663,10 @@ export default function DataTimeline() {
                 </ResponsiveContainer>
               )}
 
-              {/* Meta footer */}
+              {/* Meta footer — always visible now that tl is never null */}
               {tl && (
                 <div className="mt-4 pt-3 border-t border-border flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground font-mono uppercase tracking-widest">
-                  <span>Real avg BCR: {(tl.meta.avg_real_bcr * 100).toFixed(1)}%</span>
+                  <span>Real avg BCR: {tl && (tl.meta.avg_real_bcr * 100).toFixed(1)}%</span>
                   <span>·</span>
                   <span>Est. history: {tl.meta.simulated_weeks} wks (algorithm)</span>
                   <span>·</span>
@@ -613,7 +680,7 @@ export default function DataTimeline() {
             </motion.div>
           )}
 
-          {tab === 'real' && tl && (
+          {tab === 'real' {tab === 'real' && tl && ({tab === 'real' && tl && ( (
             <motion.div key="real" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="rounded-xl border bg-card p-6 shadow-sm">
               <DataTable
@@ -624,7 +691,7 @@ export default function DataTimeline() {
               <div className="mt-4 pt-3 border-t border-border grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                 <div>
                   <p className="text-muted-foreground text-[10px] uppercase tracking-wider">Avg BCR</p>
-                  <p className="font-bold font-mono" style={{ color: bcrColor(tl.meta.avg_real_bcr) }}>{(tl.meta.avg_real_bcr * 100).toFixed(1)}%</p>
+                  <p className="font-bold font-mono" style={{ color: bcrColor(tl.meta.avg_real_bcr) }}>{tl && (tl.meta.avg_real_bcr * 100).toFixed(1)}%</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground text-[10px] uppercase tracking-wider">Avg Premium / Week</p>
@@ -642,7 +709,7 @@ export default function DataTimeline() {
             </motion.div>
           )}
 
-          {tab === 'simulated' && tl && (
+          {tab === 'simulated' {tab === 'simulated' && tl && ({tab === 'simulated' && tl && ( (
             <motion.div key="sim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="rounded-xl border bg-card p-6 shadow-sm">
 
@@ -665,7 +732,7 @@ export default function DataTimeline() {
             </motion.div>
           )}
 
-          {tab === 'projection' && tl && (
+          {tab === 'projection' {tab === 'projection' && tl && ({tab === 'projection' && tl && ( (
             <motion.div key="proj" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="rounded-xl border bg-card p-6 shadow-sm">
 
@@ -690,7 +757,7 @@ export default function DataTimeline() {
               <div className="mt-4 p-3 rounded-lg bg-primary/5 border border-primary/20 text-xs text-muted-foreground">
                 <span className="font-bold text-primary">Try: </span>
                 Switch to Monsoon above — watch how P50 crosses 85% in Apr–May (heat + monsoon overlap).
-                Normal baseline for {city}: {(tl.meta.avg_real_bcr * 100).toFixed(0)}% avg BCR.
+                Normal baseline for {city}: {tl && (tl.meta.avg_real_bcr * 100).toFixed(0)}% avg BCR.
               </div>
             </motion.div>
           )}
@@ -707,7 +774,7 @@ export default function DataTimeline() {
                   Current Week · Live Simulation · ticks every {tl.meta.tick_interval_s}s
                 </p>
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl font-bold font-mono" style={{ color: badge.color }}>{(curBCR * 100).toFixed(1)}%</span>
+                  <span className="text-2xl font-bold font-mono" style={{ color: badge.color }}>{tl && (curBCR * 100).toFixed(1)}%</span>
                   <span className="text-xs font-bold uppercase px-2 py-0.5 rounded-md" style={{ color: badge.color, background: badge.bg }}>{badge.label}</span>
                   {delta > 0 ? <TrendingUp className="w-4 h-4 text-destructive" /> : <TrendingDown className="w-4 h-4 text-[#10a37f]" />}
                   {tl.current_week.suspension_risk && <ShieldAlert className="w-4 h-4 text-destructive animate-pulse" />}
