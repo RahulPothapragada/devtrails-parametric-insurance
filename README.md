@@ -7,32 +7,29 @@
 ## ⚡ Judge Quick-Start (5 minutes)
 
 ```bash
-# 1. Clone
+# 1. Clone (git-lfs required — installs the 160MB seeded database automatically)
+#    Install git-lfs first if needed: https://git-lfs.github.com
 git clone https://github.com/RahulPothapragada/devtrails-parametric-insurance.git
 cd devtrails-parametric-insurance
+git lfs pull          # downloads flowsecure.db (160MB, ~30s on broadband)
 
-# 2. Backend
+# 2. Backend — NO .env needed, app works fully out of the box
 cd backend
 python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env          # edit .env if you want real API/Razorpay keys
-                              # app works fully in sandbox mode without any keys
-
-# 3. Seed the database (creates flowsecure.db with 13,000 riders, 13 cities, 8 weeks of ledger data)
-python -m app.mock_data.seed_db
-
-# 4. Start backend
 uvicorn app.main:app --reload --port 8000
 # API docs → http://localhost:8000/docs
 
-# 5. Frontend (new terminal)
+# 3. Frontend (new terminal)
 cd ../frontend
 npm install
 npm run dev
 # App → http://localhost:5173
 ```
 
-**Note:** `flowsecure.db` is not in this repo (160 MB — exceeds GitHub limits). Run `seed_db` to generate it. Takes ~30 seconds.
+> **No `.env` needed.** The app defaults to SQLite and runs in sandbox mode — Razorpay payments simulate automatically, weather/AQI use mock data. Everything works without any API keys.
+
+> **Don't have git-lfs?** Run `python -m app.mock_data.seed_db` from the `backend/` folder to generate `flowsecure.db` from scratch (~30 seconds).
 
 ### Key pages to demo
 | Page | URL | What it shows |

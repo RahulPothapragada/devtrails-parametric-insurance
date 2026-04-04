@@ -10,9 +10,8 @@ class Settings(BaseSettings):
     ENV: str = "development"
     DEBUG: bool = True
 
-    # Database
-    DATABASE_URL: str = "postgresql://user:password@localhost:5432/gigshield"
-    REDIS_URL: str = "redis://localhost:6379"
+    # Database — defaults to SQLite so the app runs with zero config
+    DATABASE_URL: str = "sqlite+aiosqlite:///./flowsecure.db"
 
     # JWT
     SECRET_KEY: str = "dev-secret-key-change-in-production"
