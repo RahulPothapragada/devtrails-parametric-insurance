@@ -65,51 +65,15 @@ function MapController({ center }: { center: [number, number] }) {
   return null;
 }
 
-// ── Pre-seeded Mumbai nodes — map renders instantly, API refreshes in background ──
-function makeSeed(city: typeof CITIES[0]) {
-  const tower = { id: `T-${city.id}`, name: `${city.name} Central Hub`, type: 'tower', lat: city.lat, lng: city.lng };
-  const statuses = ['normal','normal','normal','normal','spoofing','attack'];
-  const verdicts: Record<string,string> = {
-    normal: 'Nominal Signal Pattern',
-    spoofing: 'High Risk Location Mismatch',
-    attack: 'CRITICAL: Shared Device Array (Emulation)',
-  };
-  const offsets = [
-    [-0.008,0.01],[0.012,-0.005],[0.005,0.015],[-0.015,0.003],[0.009,-0.012],
-    [-0.003,0.018],[0.018,0.002],[-0.012,-0.009],[0.007,0.007],[-0.007,-0.015],
-    [0.014,0.011],[-0.011,0.013],[0.003,-0.018],[0.016,-0.007],[-0.009,0.005],
-    [0.001,0.019],[-0.017,0.001],[0.011,-0.014],[-0.004,0.012],[0.019,0.004],
-  ];
-  const riders = offsets.map((off, i) => {
-    const st = statuses[i % statuses.length];
-    return {
-      id: `R-seed-${city.id}-${i}`,
-      name: `Rider ${i+1}`,
-      type: 'rider',
-      lat: city.lat + off[0],
-      lng: city.lng + off[1],
-      status: st,
-      risk: st === 'attack' ? 'extreme' : st === 'spoofing' ? 'high' : 'low',
-      fraud_score: st === 'attack' ? 95 : st === 'spoofing' ? 72 : 12,
-      verdict: verdicts[st],
-    };
-  });
-  return [tower, ...riders];
-}
-
 export default function FraudGraphPage() {
   const [activeCity, setActiveCity] = useState(CITIES[0]);
-  const [nodes, setNodes] = useState<any[]>(() => makeSeed(CITIES[0]));
+  const [nodes, setNodes] = useState<any[]>([]);
   const [selectedNode, setSelectedNode] = useState<any>(null);
   const [mapStyle, setMapStyle] = useState<'dark' | 'satellite'>('dark');
   const [showRadius, setShowRadius] = useState(true);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Seed immediately for the selected city so map doesn't flicker
-    setNodes(makeSeed(activeCity));
-    setSelectedNode(null);
-
     async function fetchLiveNetwork() {
       setLoading(true);
       try {
@@ -126,6 +90,7 @@ export default function FraudGraphPage() {
       }
     }
     fetchLiveNetwork();
+    setSelectedNode(null);
   }, [activeCity]);
 
 

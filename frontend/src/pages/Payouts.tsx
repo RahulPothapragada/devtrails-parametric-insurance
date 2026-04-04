@@ -93,17 +93,12 @@ export default function Payouts() {
     }
   };
 
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+  }
+
   if (!data) {
-    return (
-      <div className="min-h-screen pt-24 pb-20 px-4 md:px-8 max-w-5xl mx-auto flex items-center justify-center">
-        <div className="text-center space-y-3">
-          {loading
-            ? <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
-            : <Wallet className="w-10 h-10 text-muted-foreground mx-auto" />}
-          <p className="text-muted-foreground">{loading ? 'Loading your payouts…' : 'Please log in to view your payouts.'}</p>
-        </div>
-      </div>
-    );
+    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Please log in first.</div>;
   }
 
   const unpaidReadyClaims = data.recent_claims.filter(c => 

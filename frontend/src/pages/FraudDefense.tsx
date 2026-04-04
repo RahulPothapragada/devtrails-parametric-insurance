@@ -38,31 +38,17 @@ function fmt(n: number) {
   return `₹${n.toFixed(0)}`;
 }
 
-// ── Pre-seeded real DB values — renders instantly, API refreshes in background ──
-const DEFAULT_SUMMARY: FraudSummary = {
-  total_riders: 13000,
-  anomalous_riders: 2600,
-  anomaly_rate_pct: 20.0,
-  syndicate_count: 9,
-  blocked_premium: 124539,
-  top_syndicate_zones: [
-    { zone: 'Gomti Nagar', count: 34 },
-    { zone: 'Chinhat', count: 34 },
-    { zone: 'Rau', count: 34 },
-  ],
-};
-
 export default function FraudDefense() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [activeWall, setActiveWall] = useState(1);
-  const [summary, setSummary] = useState<FraudSummary>(DEFAULT_SUMMARY);
+  const [summary, setSummary] = useState<FraudSummary | null>(null);
   const mountedRef = useRef(true);
 
-  // Fetch real fraud summary stats — updates pre-seeded defaults in background
+  // Fetch real fraud summary stats
   useEffect(() => {
     fetch('http://127.0.0.1:8000/api/admin/fraud-summary')
       .then(r => r.json())
-      .then(data => { if (mountedRef.current && data?.total_riders) setSummary(data); })
+      .then(data => { if (mountedRef.current) setSummary(data); })
       .catch(() => {});
   }, []);
 
@@ -144,10 +130,10 @@ export default function FraudDefense() {
     };
   }, []);
 
-  const anomalyRate = summary.anomaly_rate_pct;
-  const syndicateCount = summary.syndicate_count;
-  const blockedValue = summary.blocked_premium;
-  const topZones = summary.top_syndicate_zones;
+  const anomalyRate = summary?.anomaly_rate_pct ?? 0;
+  const syndicateCount = summary?.syndicate_count ?? 0;
+  const blockedValue = summary?.blocked_premium ?? 0;
+  const topZones = summary?.top_syndicate_zones ?? [];
 
   return (
     <div className="w-full max-w-7xl mx-auto p-4 md:p-6">
@@ -165,33 +151,34 @@ export default function FraudDefense() {
               </div>
               <h1 className="text-3xl font-bold tracking-tight text-foreground">9-Wall Adversarial Defense</h1>
             </div>
-            <p className="text-muted-foreground font-medium pl-1">Real-time anti-spoofing and anomaly detection across {summary.total_riders.toLocaleString('en-IN')} riders.</p>
+            <p className="text-muted-foreground font-medium pl-1">Real-time anti-spoofing and anomaly detection across {(summary?.total_riders ?? 0).toLocaleString('en-IN')} riders.</p>
           </div>
 
           <div className="flex items-center gap-6">
             <div className="text-right">
               <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider block">Blocked Value</span>
               <span className="text-2xl font-bold text-foreground font-mono">
-                {fmt(blockedValue)}
+                {summary ? fmt(blockedValue) : '...'}
               </span>
             </div>
             <div className="text-right">
               <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider block">Syndicates</span>
               <span className="text-2xl font-bold text-destructive font-mono">
-                {syndicateCount} Active
+                {summary ? `${syndicateCount} Active` : '...'}
               </span>
             </div>
             <div className="text-right">
               <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider block">Anomaly Rate</span>
               <span className="text-2xl font-bold text-[#f59e0b] font-mono">
-                {anomalyRate}%
+                {summary ? `${anomalyRate}%` : '...'}
               </span>
             </div>
           </div>
         </div>
 
         {/* Anomaly Rate Banner */}
-        <div className="rounded-xl border border-[#f59e0b]/30 bg-[#f59e0b]/5 p-4 flex flex-col md:flex-row md:items-center gap-4">
+        {summary && (
+          <div className="rounded-xl border border-[#f59e0b]/30 bg-[#f59e0b]/5 p-4 flex flex-col md:flex-row md:items-center gap-4">
             <div className="flex items-center gap-3">
               <ShieldAlert className="w-5 h-5 text-[#f59e0b]" />
               <span className="text-sm font-bold text-foreground">Platform Anomaly Overview</span>
@@ -226,6 +213,7 @@ export default function FraudDefense() {
               <p className="text-[10px] text-muted-foreground mt-1">{anomalyRate}% of all riders flagged across 13 cities</p>
             </div>
           </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Main Feed */}
