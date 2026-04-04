@@ -6,30 +6,49 @@
 
 ## ⚡ Judge Quick-Start (5 minutes)
 
+### Option A — Shell scripts (recommended, 2 commands)
+
 ```bash
-# 1. Clone (git-lfs required — installs the 160MB seeded database automatically)
-#    Install git-lfs first if needed: https://git-lfs.github.com
+# 1. Clone — git-lfs pulls the seeded DB (160MB) automatically
+#    Need git-lfs? → https://git-lfs.github.com  (one-time install)
 git clone https://github.com/RahulPothapragada/devtrails-parametric-insurance.git
 cd devtrails-parametric-insurance
-git lfs pull          # downloads flowsecure.db (160MB, ~30s on broadband)
+git lfs pull          # downloads flowsecure.db (~30s)
 
-# 2. Backend — NO .env needed, app works fully out of the box
-cd backend
-python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+# 2. Install everything
+./setup.sh
+
+# 3. Run everything (backend + frontend together)
+./start.sh
+# Frontend → http://localhost:5173
+# Backend  → http://localhost:8000
 # API docs → http://localhost:8000/docs
-
-# 3. Frontend (new terminal)
-cd ../frontend
-npm install
-npm run dev
-# App → http://localhost:5173
 ```
 
-> **No `.env` needed.** The app defaults to SQLite and runs in sandbox mode — Razorpay payments simulate automatically, weather/AQI use mock data. Everything works without any API keys.
+### Option B — Docker (one command, no Python/Node needed)
 
-> **Don't have git-lfs?** Run `python -m app.mock_data.seed_db` from the `backend/` folder to generate `flowsecure.db` from scratch (~30 seconds).
+```bash
+git clone https://github.com/RahulPothapragada/devtrails-parametric-insurance.git
+cd devtrails-parametric-insurance && git lfs pull
+docker-compose up --build
+# Frontend → http://localhost:5173
+```
+
+### Option C — Manual (if git-lfs unavailable)
+
+```bash
+git clone https://github.com/RahulPothapragada/devtrails-parametric-insurance.git
+cd devtrails-parametric-insurance/backend
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+python -m app.mock_data.seed_db   # generates flowsecure.db (~30 seconds)
+uvicorn app.main:app --reload --port 8000
+
+# In a second terminal:
+cd ../frontend && npm install && npm run dev
+```
+
+> **`.env` is included** with test/dev values — no configuration needed. Razorpay test mode, SQLite database, mock weather/AQI all work out of the box.
 
 ### Key pages to demo
 | Page | URL | What it shows |

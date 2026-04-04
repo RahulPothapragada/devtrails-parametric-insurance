@@ -1,48 +1,28 @@
 version: "3.8"
 
+# FlowSecure — SQLite-based, no external databases needed
+# Usage: docker-compose up --build
+# App → http://localhost:5173   API → http://localhost:8000
+
 services:
-  # ── Backend (FastAPI) ──
   backend:
     build: ./backend
     ports:
       - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://gigshield:gigshield@db:5432/gigshield
-      - REDIS_URL=redis://redis:6379
-    depends_on:
-      - db
-      - redis
     volumes:
       - ./backend:/app
+      - ./backend/flowsecure.db:/app/flowsecure.db
+    env_file:
+      - ./backend/.env
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-  # ── PostgreSQL ──
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: gigshield
-      POSTGRES_PASSWORD: gigshield
-      POSTGRES_DB: gigshield
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
-  # ── Redis ──
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-
-  # ── Frontend (React + Vite) ──
   frontend:
     build: ./frontend
     ports:
       - "5173:5173"
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    command: npm run dev -- --host 0.0.0.0
-
-volumes:
-  pgdata:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+    depends_on:
+      - backend

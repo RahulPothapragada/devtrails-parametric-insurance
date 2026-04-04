@@ -6,7 +6,7 @@ __pycache__/
 dist/
 build/
 venv/
-.env
+# .env is intentionally committed — contains only test/dev values, no production secrets
 
 # Node
 node_modules/
