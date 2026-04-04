@@ -43,6 +43,19 @@ WEEKLY_PREMIUMS = {
     ("tier_3", "high"): 40.0,  ("tier_3", "medium"): 30.0,  ("tier_3", "low"): 22.0,
 }
 
+# ── Parametric trigger payouts (per trigger event) ──
+# "High-Severity, Low-Frequency" Actuarial Model
+# Target payout = ~10-12% of a theoretical loss benchmark (e.g. 3000 Rs).
+# Premium = 75 Rs. Expected Probability = 13% weekly.
+TRIGGER_PAYOUTS = {
+    "tier_1": {"rainfall": 350, "heat": 320, "aqi": 280, "traffic": 250, "cold_fog": 280, "social": 450},
+    "tier_2": {"rainfall": 280, "heat": 260, "aqi": 220, "traffic": 200, "cold_fog": 220, "social": 350},
+    "tier_3": {"rainfall": 220, "heat": 200, "aqi": 180, "traffic": 150, "cold_fog": 180, "social": 280},
+}
+
+# Deterministic weekly earnings by city tier (±5% jitter)
+TIER_BASE_EARNINGS = {"tier_1": 5500, "tier_2": 4400, "tier_3": 3300}
+
 TIER_EARN_MULT = {"tier_1": 1.0, "tier_2": 0.80, "tier_3": 0.60}
 AREA_EARN_MULT = {"urban": 1.0, "semi_urban": 0.75, "rural": 0.55}
 
@@ -247,8 +260,8 @@ async def seed():
                     zone_id=z_id,
                     dark_store_id=dark_store_id,
                     shift_type=random.choice(["morning", "evening", "night", "flexible"]),
-                    avg_weekly_earnings=float(round(random.uniform(4000, 7000) * t_mult * a_mult)),
-                    avg_hourly_rate=float(round(random.uniform(80, 120) * t_mult * a_mult, 2)),
+                    avg_weekly_earnings=float(round(TIER_BASE_EARNINGS.get(ct, 5500) * a_mult * random.uniform(0.95, 1.05))),
+                    avg_hourly_rate=float(round(TIER_BASE_EARNINGS.get(ct, 5500) / 48 * a_mult, 2)),
                     active_days_last_30=active_days,
                     activity_tier=activity_tier,
                     shield_level=random.randint(1, 5),
@@ -270,18 +283,20 @@ async def seed():
                     for r, zid, zt, city_t, at, zlat, zlng, susp in rider_batch:
                         pk = (city_t, zt)
                         premium = WEEKLY_PREMIUMS.get(pk, 45.0)
+                        tier_payouts = TRIGGER_PAYOUTS.get(city_t, TRIGGER_PAYOUTS["tier_1"])
                         pol = Policy(
                             rider_id=r.id, zone_id=zid,
                             week_start=week_start, week_end=week_end,
                             premium_amount=premium,
                             premium_breakdown={
-                                "rainfall": 18.0, "heat": 8.0, "aqi": 7.0,
-                                "traffic": 5.0, "cold_fog": 4.0, "social": 3.0,
+                                "rainfall": round(premium * 0.30, 1),
+                                "heat": round(premium * 0.18, 1),
+                                "aqi": round(premium * 0.15, 1),
+                                "traffic": round(premium * 0.15, 1),
+                                "cold_fog": round(premium * 0.10, 1),
+                                "social": round(premium * 0.12, 1),
                             },
-                            coverage_triggers={
-                                "rainfall": 280, "heat": 180, "aqi": 160,
-                                "traffic": 100, "cold_fog": 120, "social": 400,
-                            },
+                            coverage_triggers=tier_payouts,
                             status="active", auto_renew=True,
                         )
                         db.add(pol)
@@ -317,18 +332,20 @@ async def seed():
                 for r, zid, zt, city_t, at, zlat, zlng, susp in rider_batch:
                     pk = (city_t, zt)
                     premium = WEEKLY_PREMIUMS.get(pk, 45.0)
+                    tier_payouts = TRIGGER_PAYOUTS.get(city_t, TRIGGER_PAYOUTS["tier_1"])
                     pol = Policy(
                         rider_id=r.id, zone_id=zid,
                         week_start=week_start, week_end=week_end,
                         premium_amount=premium,
                         premium_breakdown={
-                            "rainfall": 18.0, "heat": 8.0, "aqi": 7.0,
-                            "traffic": 5.0, "cold_fog": 4.0, "social": 3.0,
+                            "rainfall": round(premium * 0.30, 1),
+                            "heat": round(premium * 0.18, 1),
+                            "aqi": round(premium * 0.15, 1),
+                            "traffic": round(premium * 0.15, 1),
+                            "cold_fog": round(premium * 0.10, 1),
+                            "social": round(premium * 0.12, 1),
                         },
-                        coverage_triggers={
-                            "rainfall": 280, "heat": 180, "aqi": 160,
-                            "traffic": 100, "cold_fog": 120, "social": 400,
-                        },
+                        coverage_triggers=tier_payouts,
                         status="active", auto_renew=True,
                     )
                     db.add(pol)
@@ -393,7 +410,6 @@ async def _seed_weekly_history(db, city_map, city_tier_map, zone_meta):
         semi_pct = semi_z / total_z
 
         avg_premium = {"tier_1": 62, "tier_2": 45, "tier_3": 30}.get(ct, 45)
-        avg_payout = {"tier_1": 350, "tier_2": 240, "tier_3": 140}.get(ct, 240)
 
         for week_offset in range(1, 9):
             week_end_dt = now - timedelta(weeks=week_offset - 1, days=now.weekday())
@@ -411,20 +427,38 @@ async def _seed_weekly_history(db, city_map, city_tier_map, zone_meta):
             elif city_name in ["Chennai", "Kolkata", "Patna"] and month in [10, 11]:
                 seasonal = 2.0
 
-            premium_collected = round(
-                city_riders * avg_premium * random.uniform(0.88, 1.00), 2
-            )
-            base_claims = max(2, int(city_riders * 0.12 * seasonal * random.uniform(0.6, 1.4)))
-            claims_approved = max(1, int(base_claims * random.uniform(0.60, 0.85)))
+            # Calculate accurate premium collected by aggregating over all zones of the city
+            # Using the actual WEEKLY_PREMIUMS based on city tier and zone tier
+            total_premium = 0.0
+            for z_meta in city_zones_meta:
+                z_tier = z_meta["tier"]
+                # Assume riders are distributed evenly across the zones
+                riders_in_zone = city_riders / total_z
+                pk = (ct, z_tier)
+                zone_premium = WEEKLY_PREMIUMS.get(pk, 45.0)
+                total_premium += riders_in_zone * zone_premium
+
+            premium_collected = round(total_premium * random.uniform(0.92, 1.00), 2)
+
+            # Generate total claims randomly but centered on the seasonal risks
+            base_claims = max(2, int(city_riders * 0.10 * seasonal * random.uniform(0.7, 1.3)))
+            claims_approved = max(1, int(base_claims * random.uniform(0.65, 0.90)))
             claims_denied = max(0, base_claims - claims_approved)
 
             urban_n = max(0, round(claims_approved * urban_pct))
             semi_n = max(0, round(claims_approved * semi_pct))
             rural_n = max(0, claims_approved - urban_n - semi_n)
 
-            urban_pay = round(urban_n * avg_payout * random.uniform(0.85, 1.15), 2)
-            semi_pay = round(semi_n * avg_payout * 0.75 * random.uniform(0.85, 1.15), 2)
-            rural_pay = round(rural_n * avg_payout * 0.55 * random.uniform(0.85, 1.15), 2)
+            # Use area and tier multipliers to calculate realistic payouts rather than hardcoded 350/240/140
+            # An average trigger base payout is around 180 (across all triggers from pricing_engine)
+            base_avg_trigger = 180 
+            t_mult = TIER_EARN_MULT.get(ct, 1.0)
+            
+            # Urban pays 1.0x, semi-urban 0.75x, rural 0.55x
+            urban_pay = round(urban_n * base_avg_trigger * t_mult * 1.0 * random.uniform(0.9, 1.2), 2)
+            semi_pay = round(semi_n * base_avg_trigger * t_mult * 0.75 * random.uniform(0.9, 1.2), 2)
+            rural_pay = round(rural_n * base_avg_trigger * t_mult * 0.55 * random.uniform(0.9, 1.2), 2)
+            
             total_payout = round(urban_pay + semi_pay + rural_pay, 2)
 
             lr = round(total_payout / premium_collected, 4) if premium_collected > 0 else 0.0

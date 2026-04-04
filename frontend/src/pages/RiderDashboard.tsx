@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   IndianRupee, CloudRain, Clock, ShieldCheck, ChevronRight,
   CreditCard, CheckCircle2, AlertCircle, Loader2, Wallet, Shield,
@@ -148,16 +148,27 @@ const RISK_META: Record<string, { icon: typeof CloudRain; color: string; label: 
 // ──────────────────────────────────────────────────────────────
 export default function RiderDashboard() {
   // Auth
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [loggedIn, setLoggedIn] = useState(!!getToken());
   const [riderName, setRiderName] = useState(getRiderName() || '');
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
+
+  // Auto-redirect if redirect parameter is requested
+  useEffect(() => {
+    if (loggedIn && searchParams.get('redirect') === 'story') {
+      navigate('/story');
+    }
+  }, [loggedIn, navigate, searchParams]);
 
   // Payment
   const [rzpConfig, setRzpConfig] = useState<RzpConfig | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<
     'idle' | 'creating' | 'open' | 'processing' | 'verifying' | 'success' | 'error'
   >('idle');
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [isDisasterMode, setIsDisasterMode] = useState(false);
   const [paymentError, setPaymentError] = useState('');
   const [lastPayment, setLastPayment] = useState<{
     orderId: string; paymentId: string; method: string; mode: string;
@@ -210,6 +221,11 @@ export default function RiderDashboard() {
       localStorage.setItem('flowsecure_rider_name', data.name);
       setLoggedIn(true);
       setRiderName(data.name);
+
+      // Instantly push to story if from landing page
+      if (searchParams.get('redirect') === 'story') {
+        navigate('/story');
+      }
     } catch (e) {
       setLoginError(e instanceof Error ? e.message : 'Login failed');
     } finally {
@@ -421,17 +437,24 @@ export default function RiderDashboard() {
   // ── Computed values from backend data ──
   const deliveryEarnings = dashboardData?.weekly_earnings || 0;
   const optimizationSavings = optimizeData?.projected_earnings_saved || 0;
-  const totalPayouts = dashboardData?.recent_claims?.reduce((sum, c) => sum + (c.payout_amount || 0), 0) || 0;
+  // IMPORTANT: Only show payouts/claims in disaster mode
+  const rawPayouts = dashboardData?.recent_claims?.reduce((sum, c) => sum + (c.payout_amount || 0), 0) || 0;
+  const totalPayouts = isDisasterMode ? rawPayouts : 0;
   const activePremium = dashboardData?.active_policy?.premium_amount || 0;
   const displayPremium = activePremium || premiumEstimate;
+  // Normal week: earnings = delivery + AI optimization only. Disaster: + insurance payout
   const totalEarnings = deliveryEarnings + optimizationSavings + totalPayouts;
-  const incomeProtected = optimizationSavings + totalPayouts - activePremium;
-  const incomeUpliftPct = deliveryEarnings > 0 ? Math.round((incomeProtected / deliveryEarnings) * 100) : 0;
+  // Net insurance = payout minus premium cost (only meaningful in disaster mode)
+  const incomeProtected = totalPayouts - activePremium;
+  const deliveryUpliftPct = deliveryEarnings > 0 ? Math.round((optimizationSavings / deliveryEarnings) * 100) : 0;
+  // In disaster mode, show the net gain percentage from insurance payout vs base earnings
+  const disasterNetGainPct = deliveryEarnings > 0 ? Math.round(((totalPayouts - activePremium) / deliveryEarnings) * 100) : 0;
   const activeDays = (dashboardData?.rider?.active_days_last_30) ?? 0;
   const activityTier = (dashboardData?.rider?.activity_tier || 'low').toUpperCase();
   const hasActivePolicy = !!dashboardData?.active_policy;
   const zoneName = dashboardData?.zone?.name || '';
-  const paidClaims = dashboardData?.recent_claims?.filter(c => c.status === 'paid' || c.status === 'auto_approved') || [];
+  const rawPaidClaims = dashboardData?.recent_claims?.filter(c => c.status === 'paid' || c.status === 'auto_approved') || [];
+  const paidClaims = isDisasterMode ? rawPaidClaims : [];
 
   // Find the highest-risk day from predictions
   const highRiskDay = predictData?.predictions?.find(p => p.risk === 'High');
@@ -441,6 +464,36 @@ export default function RiderDashboard() {
 
   // Format currency
   const fmt = (n: number) => n.toLocaleString('en-IN');
+
+  const handleLogout = () => {
+    localStorage.removeItem('flowsecure_token');
+    localStorage.removeItem('flowsecure_rider_name');
+    setLoggedIn(false);
+    setRiderName('');
+  };
+
+  const handleSimulateDisaster = async () => {
+    if (!loggedIn || !dashboardData?.rider?.id) return;
+    setIsSimulating(true);
+    try {
+      const resp = await fetch(`${API}/triggers/demo-disaster/${dashboardData.rider.id}`, {
+        method: 'POST',
+      });
+      if (!resp.ok) throw new Error('Simulation failed');
+      await fetchDashboardData(); // Refresh to see the new claim
+      await fetchHistory();
+      setIsDisasterMode(true); // Switch to disaster view
+    } catch (e) {
+      console.error(e);
+      setLoginError('Disaster simulation failed. Check backend logs.');
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
+  const handleResetNormal = async () => {
+    setIsDisasterMode(false); // Just toggle back to normal view
+  };
 
   // ──────────────────────────────────────────────────────────────
   return (
@@ -452,9 +505,19 @@ export default function RiderDashboard() {
       >
         {/* ── Header ── */}
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            {loggedIn ? `Hello, ${riderName.split(' ')[0]}` : 'Rider Dashboard'}
-          </h1>
+          <div className="flex items-center justify-between mb-1">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">
+              {loggedIn ? `Hello, ${riderName.split(' ')[0]}` : 'Rider Dashboard'}
+            </h1>
+            {loggedIn && (
+              <button
+                onClick={handleLogout}
+                className="text-xs px-3 py-1.5 border rounded-lg bg-card hover:bg-muted text-muted-foreground hover:text-foreground transition-all flex items-center gap-1.5 shadow-sm"
+              >
+                Log Out
+              </button>
+            )}
+          </div>
           <p className="text-muted-foreground font-medium text-sm flex items-center justify-between">
             {loggedIn ? (zoneName || 'Loading zone...') : 'Login to get started'}
             {loggedIn && (
@@ -477,19 +540,25 @@ export default function RiderDashboard() {
                 <User className="w-5 h-5 text-primary" />
               </div>
               <div>
-                <h3 className="font-semibold text-foreground">Demo Login</h3>
-                <p className="text-xs text-muted-foreground">One-click login as a seeded rider to test payments</p>
+                <h3 className="font-semibold text-foreground">Get Started</h3>
+                <p className="text-xs text-muted-foreground">Login or create an account to access your dashboard</p>
               </div>
             </div>
+            <Link
+              to="/rider/auth"
+              className="w-full py-3 px-4 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl transition-all flex items-center justify-center gap-2"
+            >
+              <LogIn className="w-4 h-4" /> Login / Sign Up
+            </Link>
             <button
               onClick={handleDemoLogin}
               disabled={loginLoading}
-              className="w-full py-3 px-4 bg-primary hover:bg-primary/90 disabled:bg-muted text-primary-foreground font-semibold rounded-xl transition-all flex items-center justify-center gap-2"
+              className="w-full py-2.5 px-4 bg-muted hover:bg-muted/80 text-muted-foreground font-medium rounded-xl transition-all flex items-center justify-center gap-2 text-sm border"
             >
               {loginLoading ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> Logging in...</>
               ) : (
-                <><LogIn className="w-4 h-4" /> Login as Demo Rider</>
+                <>Demo Login (Quick Access)</>
               )}
             </button>
             {loginError && (
@@ -545,22 +614,22 @@ export default function RiderDashboard() {
                 <IndianRupee className="w-24 h-24 text-foreground" />
               </div>
               <div className="relative z-10">
-                <p className="text-muted-foreground font-medium text-sm mb-1">Weekly Earnings & Claims</p>
+                <p className="text-muted-foreground font-medium text-sm mb-1">
+                  {isDisasterMode ? '⚠️ Disaster Week — Earnings & Payouts' : 'Weekly Earnings'}
+                </p>
                 <div className="flex items-baseline gap-1">
                   <span className="text-2xl font-semibold text-muted-foreground">&#8377;</span>
                   <AnimatedCounter value={Math.round(totalEarnings)} className="text-5xl font-bold tracking-tighter text-foreground" />
                 </div>
 
                 {totalEarnings === 0 && !dashboardLoading ? (
-                  /* ── Zero state CTA ── */
                   <div className="mt-6 p-4 rounded-lg bg-primary/5 border border-primary/20 text-center">
                     <p className="text-sm text-muted-foreground mb-1">No earnings data yet this week</p>
                     <p className="text-xs text-muted-foreground">
-                      Buy a policy below to start earning protection payouts & AI shift optimizations
+                      Buy a policy below to start earning AI shift optimizations
                     </p>
                   </div>
                 ) : (
-                  /* ── Earnings breakdown ── */
                   <div className="mt-6 flex flex-col gap-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Delivery Earnings</span>
@@ -568,16 +637,26 @@ export default function RiderDashboard() {
                     </div>
                     {optimizationSavings > 0 && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">AI Shift Optimization</span>
+                        <span className="text-muted-foreground">AI Shift Optimization (Earned by you)</span>
                         <span className="font-medium text-[#10a37f]">+ &#8377;{fmt(optimizationSavings)}</span>
                       </div>
                     )}
-                    {totalPayouts > 0 && (
+
+                    {/* NORMAL WEEK: Only AI optimization, no claims/payouts */}
+                    {!isDisasterMode && (
+                      <div className="p-3 rounded-lg bg-[#10a37f]/5 border border-[#10a37f]/20 text-center">
+                        <p className="text-xs text-[#10a37f] font-semibold">✓ Normal Week — No disruptions detected</p>
+                        <p className="text-[10px] text-muted-foreground mt-1">No claims needed. You're earning ₹{fmt(optimizationSavings)} extra via AI shift optimization.</p>
+                      </div>
+                    )}
+
+                    {/* DISASTER WEEK: Full payout breakdown */}
+                    {isDisasterMode && totalPayouts > 0 && (
                       <>
                         <div className="h-px w-full bg-border" />
                         <div className="flex flex-col gap-1.5 mt-1">
                           <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Parametric Policy Payout</span>
+                            <span className="text-muted-foreground">🚨 Parametric Payout (Paid by us)</span>
                             <span className="font-medium text-[#0ea5e9]">+ &#8377;{fmt(totalPayouts)}</span>
                           </div>
                           {paidClaims.length > 0 && (
@@ -600,8 +679,8 @@ export default function RiderDashboard() {
               </div>
             </motion.div>
 
-            {/* ACTIONABLE CLAIM ALERT */}
-            {(dashboardData?.recent_claims?.filter(c => (c.status === 'auto_approved' || c.status === 'approved') && (!c.payout_status || c.payout_status === 'not_initiated') && c.payout_amount > 0) || []).length > 0 && (
+            {/* ACTIONABLE CLAIM ALERT — Only in disaster mode */}
+            {isDisasterMode && (dashboardData?.recent_claims?.filter(c => (c.status === 'auto_approved' || c.status === 'approved') && (!c.payout_status || c.payout_status === 'not_initiated') && c.payout_amount > 0) || []).length > 0 && (
               <motion.div
                 initial={{ opacity: 0, y: 10, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -612,8 +691,8 @@ export default function RiderDashboard() {
                     <Zap className="w-5 h-5 text-primary animate-pulse" />
                   </div>
                   <div>
-                    <h3 className="font-bold">Funds Ready for Payout!</h3>
-                    <p className="text-xs opacity-90 mt-0.5">You have approved parametric claims ready to be credited to your UPI.</p>
+                    <h3 className="font-bold">🚨 Disaster Detected — Funds Ready!</h3>
+                    <p className="text-xs opacity-90 mt-0.5">Parametric trigger breached. Insurance payout auto-credited to your UPI.</p>
                   </div>
                 </div>
                 <Link to="/payouts" className="w-full sm:w-auto px-4 py-2.5 bg-primary text-primary-foreground font-semibold rounded-lg text-sm flex items-center justify-center gap-2 whitespace-nowrap hover:bg-primary/90 transition-colors">
@@ -664,24 +743,39 @@ export default function RiderDashboard() {
                 </div>
               </div>
 
-              {(incomeProtected > 0 || hasActivePolicy) && (
-                <div className="flex items-center justify-between p-3 rounded-lg bg-primary/5 border border-primary/20">
+              {/* Normal week: show premium cost, no payouts */}
+              {hasActivePolicy && !isDisasterMode && (
+                <div className="flex items-center justify-between p-3 rounded-lg border bg-[#10a37f]/5 border-[#10a37f]/20">
                   <div>
-                    <p className="text-xs text-muted-foreground">Income protected this week</p>
-                    <p className="text-xl font-bold text-primary mt-0.5">
-                      {incomeProtected >= 0 ? '+' : ''} ₹{fmt(Math.abs(incomeProtected))}
-                    </p>
+                    <p className="text-xs text-muted-foreground">Weekly Premium Paid</p>
+                    <p className="text-xl font-bold mt-0.5 text-foreground">₹{fmt(displayPremium)}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-3xl font-black text-primary">
-                      {incomeUpliftPct >= 0 ? '+' : ''}{incomeUpliftPct}%
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">income uplift</p>
+                    <p className="text-2xl font-black text-[#10a37f]">+{deliveryUpliftPct}%</p>
+                    <p className="text-[10px] text-muted-foreground">AI shift uplift</p>
                   </div>
                 </div>
               )}
 
-              {!hasActivePolicy && incomeProtected === 0 && (
+              {/* Disaster week: show net gain from insurance */}
+              {hasActivePolicy && isDisasterMode && (
+                <div className={`flex items-center justify-between p-3 rounded-lg border ${incomeProtected >= 0 ? 'bg-primary/5 border-primary/20' : 'bg-red-500/5 border-red-500/20'}`}>
+                  <div>
+                    <p className="text-xs text-muted-foreground">🚨 Net Insurance Gain</p>
+                    <p className={`text-xl font-bold mt-0.5 ${incomeProtected >= 0 ? 'text-primary' : 'text-red-500'}`}>
+                      {incomeProtected >= 0 ? '+' : '-'} ₹{fmt(Math.abs(incomeProtected))}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-3xl font-black ${disasterNetGainPct >= 5 ? 'text-primary' : 'text-amber-400'}`}>
+                      +{disasterNetGainPct}%
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">net gain on earnings</p>
+                  </div>
+                </div>
+              )}
+
+              {!hasActivePolicy && (
                 <div className="flex items-center justify-between p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
                   <div className="flex items-center gap-2">
                     <Shield className="w-5 h-5 text-amber-400" />
@@ -696,9 +790,11 @@ export default function RiderDashboard() {
 
               <div className="flex flex-col gap-1.5">
                 {[
-                  { label: 'AI Shift Optimization', value: optimizationSavings > 0 ? `+ ₹${fmt(optimizationSavings)}` : '₹0', color: optimizationSavings > 0 ? '#10a37f' : '#666' },
-                  { label: `Parametric Payout (${paidClaims.length} claim${paidClaims.length !== 1 ? 's' : ''})`, value: totalPayouts > 0 ? `+ ₹${fmt(totalPayouts)}` : '₹0', color: totalPayouts > 0 ? '#0ea5e9' : '#666' },
-                  { label: 'Weekly Premium', value: displayPremium > 0 ? `− ₹${fmt(displayPremium)}` : '₹0', color: displayPremium > 0 ? '#f59e0b' : '#666' },
+                  { label: 'AI Shift Optimization (Earned by you)', value: optimizationSavings > 0 ? `+ ₹${fmt(optimizationSavings)}` : '₹0', color: optimizationSavings > 0 ? '#10a37f' : '#666' },
+                  ...(isDisasterMode ? [
+                    { label: `Parametric Payout (Paid by us, ${paidClaims.length} claims)`, value: totalPayouts > 0 ? `+ ₹${fmt(totalPayouts)}` : '₹0', color: totalPayouts > 0 ? '#0ea5e9' : '#666' },
+                  ] : []),
+                  { label: 'Weekly Premium (Cost)', value: displayPremium > 0 ? `− ₹${fmt(displayPremium)}` : '₹0', color: displayPremium > 0 ? '#f59e0b' : '#666' },
                 ].map((row, i) => (
                   <div key={i} className="flex justify-between text-xs">
                     <span className="text-muted-foreground">{row.label}</span>
@@ -976,6 +1072,43 @@ export default function RiderDashboard() {
             </div>
           </>
         )}
+        {/* ── Demo Controls (Hackathon Mode) ── */}
+        {loggedIn && hasActivePolicy && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 p-1.5 bg-background/80 backdrop-blur-xl border border-border shadow-2xl rounded-full translate-x-[-50%]"
+          >
+            <button
+              onClick={handleResetNormal}
+              className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${
+                totalPayouts === 0 
+                  ? 'bg-primary text-primary-foreground shadow-lg' 
+                  : 'text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              Normal Week
+            </button>
+            <button
+              onClick={handleSimulateDisaster}
+              disabled={isSimulating}
+              className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-2 ${
+                totalPayouts > 0 
+                  ? 'bg-red-500 text-white shadow-lg' 
+                  : 'text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              {isSimulating ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <CloudRain className="w-3 h-3" />
+              )}
+              Disaster Week
+            </button>
+          </motion.div>
+        )}
+
+        <div className="h-20" /> {/* Spacer for floating button */}
       </motion.div>
     </div>
   );

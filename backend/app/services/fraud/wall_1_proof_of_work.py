@@ -17,6 +17,9 @@ THRESHOLDS = {
 
 async def check_proof_of_work(db: AsyncSession, rider_id: int, trigger_reading: TriggerReading) -> dict:
     trigger_time = trigger_reading.timestamp
+    # Normalize to naive datetime to avoid offset-aware vs offset-naive errors with SQLite
+    if trigger_time.tzinfo is not None:
+        trigger_time = trigger_time.replace(tzinfo=None)
     trigger_date = trigger_time.replace(hour=0, minute=0, second=0, microsecond=0)
 
     result = await db.execute(

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, ChevronRight, Clock, CloudRain, 
@@ -22,6 +23,14 @@ export default function StoryMode() {
   const [currentDay, setCurrentDay] = useState(0);
   const [direction, setDirection] = useState(1); // 1 = forward, -1 = back
   const [isAutoPlaying, setIsAutoPlaying] = useState(false);
+  const [riderName, setRiderName] = useState<string | null>(null);
+
+  useEffect(() => {
+    const name = localStorage.getItem('flowsecure_rider_name');
+    if (name) {
+      setRiderName(name);
+    }
+  }, []);
 
   const day = STORY_DAYS[currentDay];
   const color = dayColors[day.type];
@@ -59,6 +68,23 @@ export default function StoryMode() {
   const totalWith = STORY_DAYS.reduce((s, d) => s + d.earnings.withFlowSecure, 0);
   const totalWithout = STORY_DAYS.reduce((s, d) => s + d.earnings.withoutFlowSecure, 0);
 
+  if (!riderName) {
+    return (
+      <div className="w-full max-w-5xl mx-auto p-4 md:p-6 min-h-[calc(100vh-4rem)] flex items-center justify-center">
+        <div className="bg-card border p-8 rounded-2xl shadow-sm text-center max-w-md">
+          <ShieldCheck className="w-12 h-12 text-primary mx-auto mb-4" />
+          <h2 className="text-2xl font-bold mb-2 text-foreground">Login Required</h2>
+          <p className="text-muted-foreground mb-6 text-sm">
+            Please log in via the Rider Dashboard to view your personalized FlowSecure Story.
+          </p>
+          <Button asChild className="w-full font-bold">
+            <Link to="/rider">Go to Rider Dashboard</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full max-w-5xl mx-auto p-4 md:p-6 min-h-[calc(100vh-4rem)] flex flex-col">
       <motion.div
@@ -70,7 +96,7 @@ export default function StoryMode() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-card border p-6 rounded-2xl shadow-sm">
           <div>
             <h1 className="text-3xl font-bold tracking-tight mb-1 text-foreground leading-none">
-              Ravi's Week
+              {riderName}'s Week
             </h1>
             <p className="text-muted-foreground text-sm font-medium mt-1">
               Case Study: Visualizing the Predict → Optimize → Protect cycle.

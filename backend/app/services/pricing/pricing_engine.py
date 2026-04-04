@@ -620,12 +620,12 @@ RISK_PROBABILITIES["bhopal"] = {
 
 # Average payout per trigger event (in Rs.) — BASE values for Tier 1 Urban
 AVG_PAYOUT_PER_EVENT = {
-    "rainfall": 280,
-    "heat": 180,
-    "cold_fog": 120,
-    "aqi": 160,
-    "traffic": 100,
-    "social": 400,
+    "rainfall": 350,
+    "heat": 320,
+    "cold_fog": 280,
+    "aqi": 280,
+    "traffic": 250,
+    "social": 450,
 }
 
 # City tier multiplier for payouts (reflects cost of living)
@@ -685,7 +685,7 @@ class PricingEngine:
         
         # 2. Worker Activity Tier Multiplier (Higher activity = higher exposure = higher premium)
         # If < 5 days => "low" tier => much less exposed, cheaper premium.
-        activity_tier_mult = {"high": 1.0, "medium": 0.8, "low": 0.5}.get(activity_tier, 1.0)
+        activity_tier_mult = {"high": 1.0, "medium": 0.9, "low": 0.7}.get(activity_tier, 1.0)
         
         combined_mult = tier_mult * area_mult * activity_tier_mult
 
@@ -710,9 +710,9 @@ class PricingEngine:
             breakdown[peril_type] = round(adjusted_premium, 1)
             total += adjusted_premium
 
-        # STRICT TARGET RANGE FROM SLIDES: ₹20–₹50 per worker per week
+        # STRICT TARGET RANGE: Targeting ~75Rs for Tier 1. Range 30-95
         # Enforce this hard cap range for the weekly microinsurance ticket.
-        final_total = max(20, min(50, round(total)))
+        final_total = max(30, min(95, round(total)))
 
         # ALWAYS Scale breakdown proportionally to ensure it exactly matches final_total
         if total > 0:

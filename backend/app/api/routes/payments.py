@@ -100,11 +100,11 @@ async def create_order(
     If not → returns a simulated sandbox order for demo.
     """
     # Check for existing active policy
-    existing = await db.execute(
-        select(Policy).where(Policy.rider_id == rider.id, Policy.status == "active")
-    )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="You already have an active policy this week")
+    # existing = await db.execute(
+    #     select(Policy).where(Policy.rider_id == rider.id, Policy.status == "active")
+    # )
+    # if existing.scalar_one_or_none():
+    #     raise HTTPException(status_code=400, detail="You already have an active policy this week")
 
     # Fetch zone to calculate premium
     zone_result = await db.execute(select(Zone).where(Zone.id == body.zone_id))

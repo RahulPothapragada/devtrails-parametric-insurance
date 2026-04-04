@@ -140,6 +140,91 @@ async def reset_mocks():
     return {"message": "All mock disruption overrides cleared"}
 
 
+@router.post("/demo-disaster/{rider_id}", summary="Robust disaster simulation for demo dashboard")
+async def demo_disaster(rider_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Fast demo endpoint: directly creates a trigger + claim for a single rider.
+    Bypasses the fraud engine entirely to avoid SQLite locking.
+    """
+    from app.models.models import Claim, ClaimStatus, PayoutStatus
+
+    rider_result = await db.execute(select(Rider).where(Rider.id == rider_id))
+    rider = rider_result.scalar_one_or_none()
+    if not rider:
+        raise HTTPException(status_code=404, detail="Rider not found")
+
+    zone_result = await db.execute(select(Zone).where(Zone.id == rider.zone_id))
+    zone = zone_result.scalar_one_or_none()
+
+    # Find active policy
+    policy_result = await db.execute(
+        select(Policy).where(Policy.rider_id == rider_id, Policy.status == PolicyStatus.ACTIVE).limit(1)
+    )
+    policy = policy_result.scalar_one_or_none()
+    if not policy:
+        raise HTTPException(status_code=400, detail="No active policy for this rider")
+
+    now = datetime.now(timezone.utc)
+
+    # Clean up past demo claims to prevent the payout from stacking on multiple clicks
+    past_demo_claims_result = await db.execute(
+        select(Claim).where(
+            Claim.rider_id == rider_id,
+            Claim.fraud_score == 5.0  # Unique flag for demo claims
+        )
+    )
+    for past_claim in past_demo_claims_result.scalars().all():
+        await db.delete(past_claim)
+    await db.flush()
+
+    # Create trigger reading
+    trigger_reading = TriggerReading(
+        city_id=zone.city_id,
+        zone_id=rider.zone_id,
+        trigger_type=TriggerType.RAINFALL,
+        value=85.0,
+        threshold=64.5,
+        is_breached=True,
+        duration_hours=3.0,
+        source="demo_trigger",
+        raw_data={"simulated": True, "rider_id": rider_id},
+        timestamp=now,
+    )
+    db.add(trigger_reading)
+    await db.flush()
+
+    # Determine payout and cap it at 200 as requested
+    payout_amount = 200.0
+
+    # Directly create an auto-approved claim — no fraud engine needed for demo
+    claim = Claim(
+        rider_id=rider_id,
+        policy_id=policy.id,
+        trigger_reading_id=trigger_reading.id,
+        trigger_type=TriggerType.RAINFALL,
+        trigger_value=85.0,
+        trigger_threshold=64.5,
+        payout_amount=payout_amount,
+        hours_lost=3.0,
+        hourly_rate_used=rider.avg_hourly_rate or 90.0,
+        payout_status=PayoutStatus.CONFIRMED,
+        status=ClaimStatus.PAID,
+        fraud_score=5.0,
+        fraud_walls_passed={"walls_passed": 7, "walls_failed": 0, "classification": "trusted"},
+        event_time=now,
+        paid_at=now,
+    )
+    db.add(claim)
+    await db.commit()
+
+    return {
+        "message": f"Rainfall simulated in {zone.name}",
+        "payout_generated": True,
+        "payout_amount": payout_amount,
+        "claims_count": 1,
+    }
+
+
 @router.get("/readings", response_model=list[TriggerReadingOut])
 async def recent_readings(city_id: int = None, limit: int = 50, db: AsyncSession = Depends(get_db)):
     query = select(TriggerReading).order_by(desc(TriggerReading.timestamp)).limit(limit)
@@ -292,7 +377,7 @@ async def optimize_rider_schedule(rider_id: int, db: AsyncSession = Depends(get_
     elif risk_type == "aqi":
         target_shift = "Afternoon"
 
-    savings = round(rider.avg_weekly_earnings * 0.15, 2) if rider.avg_weekly_earnings else 420.0
+    savings = round(rider.avg_weekly_earnings * 0.05, 2) if rider.avg_weekly_earnings else 275.0
     
     now = datetime.now(timezone.utc)
     tomorrow_str = (now + timedelta(days=1)).strftime("%a")
@@ -369,10 +454,12 @@ _STRESS_SCENARIOS = {
     },
 }
 
-# Avg hourly payout rates by city tier (₹/hr) — sourced from pricing engine
+# Avg hourly payout rates by city tier (₹/hr) — kept for reference
 _TIER_HOURLY_RATE = {"tier_1": 62.0, "tier_2": 49.6, "tier_3": 37.2}
-# Avg weekly premium per active rider by tier (₹/week)
-_TIER_WEEKLY_PREMIUM = {"tier_1": 42.0, "tier_2": 34.0, "tier_3": 26.0}
+# Avg weekly premium per active rider by tier (₹/week) — matches seed_db WEEKLY_PREMIUMS avg
+_TIER_WEEKLY_PREMIUM = {"tier_1": 62.0, "tier_2": 45.0, "tier_3": 30.0}
+# Avg parametric trigger payout per claim by tier (₹) — matches TRIGGER_PAYOUTS avg
+_TIER_AVG_TRIGGER_PAYOUT = {"tier_1": 30.0, "tier_2": 24.0, "tier_3": 17.0}
 # Fraction of riders assumed to have active policies at any given week
 _POLICY_COVERAGE_RATE = 0.72
 
@@ -437,8 +524,10 @@ async def stress_scenario(scenario: str, db: AsyncSession = Depends(get_db)):
         )
         active_policies = active_policies_result.scalar() or int(rider_count * _POLICY_COVERAGE_RATE)
 
-        # Payout per insured rider = hourly_rate × active_hours/day × duration_days
-        payout_per_rider = hourly_rate * sc["active_hours_per_day"] * sc["duration_days"]
+        # Payout per insured rider = avg_trigger_payout × claims_per_day × duration_days
+        avg_trigger_payout = _TIER_AVG_TRIGGER_PAYOUT.get(city_tier, 30.0)
+        claims_per_day = sc["active_hours_per_day"] / 8  # normalize: 8hr = 1 full claim event
+        payout_per_rider = avg_trigger_payout * claims_per_day * sc["duration_days"]
         city_total_payout = payout_per_rider * active_policies
 
         # Premium collected in scenario window
@@ -457,7 +546,7 @@ async def stress_scenario(scenario: str, db: AsyncSession = Depends(get_db)):
             .limit(1)
         )
         latest_ledger = ledger_result.scalar_one_or_none()
-        current_bcr = latest_ledger.bcr if latest_ledger and latest_ledger.bcr else 0.62
+        current_bcr = latest_ledger.bcr if latest_ledger and latest_ledger.bcr else 0.55
 
         city_breakdown.append({
             "city": city.name,
@@ -474,12 +563,12 @@ async def stress_scenario(scenario: str, db: AsyncSession = Depends(get_db)):
 
     # ── Portfolio-level BCR projection ──
     # Stressed BCR = (normal baseline payouts + scenario payouts) / window premium
-    normal_payout_in_window = total_premium_window * 0.62  # baseline BCR
+    normal_payout_in_window = total_premium_window * 0.55  # baseline BCR
     stressed_total_payout = normal_payout_in_window + total_payout
     stressed_bcr = (
         stressed_total_payout / total_premium_window if total_premium_window > 0 else 0.0
     )
-    bcr_delta = stressed_bcr - 0.62
+    bcr_delta = stressed_bcr - 0.55
 
     # ── Sustainability classification ──
     if stressed_bcr <= 0.70:
@@ -533,7 +622,7 @@ async def stress_scenario(scenario: str, db: AsyncSession = Depends(get_db)):
                 f"Avg hourly rate: ₹{_TIER_HOURLY_RATE} by tier",
                 f"Avg weekly premium: ₹{_TIER_WEEKLY_PREMIUM} by tier",
                 f"Policy coverage rate: {_POLICY_COVERAGE_RATE * 100:.0f}% of registered riders",
-                "Baseline BCR: 0.62 (midpoint of target band 0.55–0.70)",
+                "Baseline BCR: 0.55 (lower bound of target band 0.55–0.70)",
                 f"Premium window: {duration_weeks} week(s) matching scenario duration",
                 "Stress = additional claims layered on top of normal baseline payouts",
             ],

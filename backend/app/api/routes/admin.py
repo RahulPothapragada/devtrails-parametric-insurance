@@ -103,7 +103,14 @@ async def review_claim(
 
     claim.status = verdict
     if verdict == "approved":
-        claim.payout_amount = claim.hours_lost * claim.hourly_rate_used * 0.60
+        policy_result = await db.execute(select(Policy).where(Policy.id == claim.policy_id))
+        policy = policy_result.scalar_one_or_none()
+        trigger = claim.trigger_type.value if claim.trigger_type else "rainfall"
+        
+        if policy and policy.coverage_triggers and trigger in policy.coverage_triggers:
+            claim.payout_amount = policy.coverage_triggers[trigger]
+        else:
+            claim.payout_amount = 240.0 # Standard fallback payout
     else:
         claim.payout_amount = 0.0
 

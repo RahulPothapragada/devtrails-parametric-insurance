@@ -15,10 +15,15 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.auth import get_current_rider
-from app.models.models import Claim, ClaimStatus, PayoutStatus
+from app.models.models import Claim, ClaimStatus, PayoutStatus, Rider, Policy, TriggerType
 from app.services.payout.payout_service import (
     initiate_payout, confirm_payout, rollback_payout, payout_status_check,
+    auto_payout_all,
 )
+import random
+from datetime import datetime, timezone
+
+
 
 router = APIRouter()
 
@@ -142,3 +147,108 @@ async def bulk_initiate(
         "errors": failed,
         "message": f"{len(initiated)} payouts initiated, {len(failed)} failed.",
     }
+
+
+@router.post("/auto-disburse", summary="Instant auto-disburse all approved claims")
+async def auto_disburse(db: AsyncSession = Depends(get_db)):
+    """
+    Demo endpoint: processes ALL approved/auto_approved claims instantly.
+    Simulates the full payout lifecycle including failure recovery with
+    UPI → IMPS channel fallback. No authentication required (admin/demo endpoint).
+    """
+    report = await auto_payout_all(db)
+    await db.commit()
+    return report
+
+
+@router.get("/demo-summary", summary="Aggregate payout stats for demo dashboard")
+async def demo_summary(db: AsyncSession = Depends(get_db)):
+    """Returns aggregate payout stats across all claims for the demo dashboard."""
+    from sqlalchemy import func as sa_func
+
+    # Total paid
+    paid_result = await db.execute(
+        select(
+            sa_func.count(Claim.id),
+            sa_func.coalesce(sa_func.sum(Claim.payout_amount), 0),
+        ).where(Claim.status == ClaimStatus.PAID)
+    )
+    paid_row = paid_result.one()
+    total_paid_count = paid_row[0]
+    total_paid_amount = round(float(paid_row[1]), 2)
+
+    # Total failed
+    failed_result = await db.execute(
+        select(sa_func.count(Claim.id)).where(Claim.payout_status == PayoutStatus.FAILED)
+    )
+    total_failed = failed_result.scalar() or 0
+
+    # Total pending (approved but not yet paid)
+    pending_result = await db.execute(
+        select(
+            sa_func.count(Claim.id),
+            sa_func.coalesce(sa_func.sum(Claim.payout_amount), 0),
+        ).where(
+            Claim.status.in_([ClaimStatus.AUTO_APPROVED, ClaimStatus.APPROVED]),
+            Claim.payout_status.in_([PayoutStatus.NOT_INITIATED, PayoutStatus.ROLLED_BACK]),
+            Claim.payout_amount > 0,
+        )
+    )
+    pending_row = pending_result.one()
+    total_pending_count = pending_row[0]
+    total_pending_amount = round(float(pending_row[1]), 2)
+
+    return {
+        "total_paid_count": total_paid_count,
+        "total_paid_amount": total_paid_amount,
+        "total_failed": total_failed,
+        "total_pending_count": total_pending_count,
+        "total_pending_amount": total_pending_amount,
+        "recovery_rate": round(
+            (total_paid_count / (total_paid_count + total_failed) * 100), 1
+        ) if (total_paid_count + total_failed) > 0 else 100.0,
+    }
+
+
+@router.post("/seed-demo", summary="Seed 25 approved claims for demo purposes")
+async def seed_demo(db: AsyncSession = Depends(get_db)):
+    """Creates 25 approved claims for riders with active policies."""
+    # Find 25 riders with active policies
+    riders_result = await db.execute(
+        select(Rider)
+        .join(Policy, Rider.id == Policy.rider_id)
+        .where(Policy.status == "ACTIVE")
+        .limit(25)
+    )
+    riders = riders_result.scalars().all()
+    
+    count = 0
+    for rider in riders:
+        # Get policy
+        pol_res = await db.execute(select(Policy).where(Policy.rider_id == rider.id).limit(1))
+        policy = pol_res.scalar_one_or_none()
+        if not policy: continue
+        trigger_enum = random.choice(list(TriggerType))
+        payout_val = 30.0
+        if policy.coverage_triggers and trigger_enum.value in policy.coverage_triggers:
+            payout_val = float(policy.coverage_triggers[trigger_enum.value])
+
+        claim = Claim(
+            rider_id=rider.id,
+            policy_id=policy.id,
+            trigger_type=trigger_enum,
+            trigger_value=120.0,
+            trigger_threshold=64.5,
+            payout_amount=payout_val,
+            status=ClaimStatus.APPROVED,
+            payout_status=PayoutStatus.NOT_INITIATED,
+            event_time=datetime.now(timezone.utc)
+        )
+        db.add(claim)
+        count += 1
+    
+    await db.commit()
+    return {"message": f"Seeded {count} claims for demo.", "count": count}
+
+
+

@@ -91,16 +91,16 @@ async def generate_claims_for_trigger(
             city_tier_str = city.city_tier.value if city and city.city_tier else "tier_1"
 
         # UNDERWRITING RULE: Trigger MUST match worker's active hours
-        # We define rough shift hours: morning: 7am-3pm, evening: 3pm-11pm, night: 11pm-7am, flexible: all day
+        # We define rough shift hours, with less restrictive optimization to allow fair payouts
         hour = trigger_reading.timestamp.hour
         shift_match = False
         if rider.shift_type == "flexible":
             shift_match = True
-        elif rider.shift_type == "morning" and 6 <= hour <= 15:
+        elif rider.shift_type == "morning" and 5 <= hour <= 17:
             shift_match = True
-        elif rider.shift_type == "evening" and 15 <= hour <= 23:
+        elif rider.shift_type == "evening" and 14 <= hour <= 24:
             shift_match = True
-        elif rider.shift_type == "night" and (hour >= 22 or hour <= 7):
+        elif rider.shift_type == "night" and (hour >= 20 or hour <= 8):
             shift_match = True
 
         if not shift_match:
@@ -113,8 +113,15 @@ async def generate_claims_for_trigger(
         hourly_rate = round(base_rate * tier_mult * area_mult)
 
         hours_lost = trigger_reading.duration_hours if trigger_reading.duration_hours else 3.0
-        zone_impact = await _calculate_zone_impact(db, zone_id, trigger_reading)
-        payout_amount = round(zone_impact * hours_lost * hourly_rate * COVERAGE_PCT, 2)
+
+        # PARAMETRIC PAYOUT: Use the fixed trigger amount from the policy
+        # This is the core parametric model — trigger fires → fixed payout, no estimation
+        trigger_name = trigger_reading.trigger_type.value
+        if policy.coverage_triggers and trigger_name in policy.coverage_triggers:
+            payout_amount = float(policy.coverage_triggers[trigger_name])
+        else:
+            # Fallback: use a conservative default (30 Rs)
+            payout_amount = 30.0
 
         # Determine trigger type
         trigger_type = trigger_reading.trigger_type

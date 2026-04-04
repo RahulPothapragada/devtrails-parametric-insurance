@@ -44,63 +44,66 @@ const mkTrend = (lrs: number[], premBase: number): WeekPoint[] =>
     return { week: `W${i + 1}`, lr, premium, payout: Math.round(premium * lr), claims: Math.round(premium * lr / 280) };
   });
 
-// ─── City Data (matches backend seed exactly) ─────────────────────
+// ─── City Data (aligned with backend pricing model) ─────────────────────
+// Premium pool = 1000 riders × avg_premium × 8 weeks
+// Tier 1 avg premium ≈ ₹62/week, Tier 2 ≈ ₹45/week, Tier 3 ≈ ₹30/week
+// Trigger payouts: Tier1 ₹18-45, Tier2 ₹14-35, Tier3 ₹10-25 per event
 const CITIES: CityData[] = [
-  // Tier 1 — Metros (1000 riders × ₹62 avg/week)
-  { name: 'Mumbai',    state: 'Maharashtra',    tier: 'tier_1', lr: 0.63, bcr: 0.63, status: 'optimal',
-    totalPremium: 496000, totalPayout: 312480, totalClaims: 967,  monsoonMult: 2.2,
+  // Tier 1 — Metros (1000 riders × ₹62 avg/week × 8 weeks = ₹496,000)
+  { name: 'Mumbai',    state: 'Maharashtra',    tier: 'tier_1', lr: 0.48, bcr: 0.48, status: 'healthy',
+    totalPremium: 496000, totalPayout: 238080, totalClaims: 874,  monsoonMult: 2.2,
     urbanPct: 71, semiUrbanPct: 21, ruralPct: 8,
-    trend: mkTrend([0.52,0.55,0.67,0.71,0.68,0.63,0.58,0.61], 62000) },
-  { name: 'Delhi',     state: 'Delhi',          tier: 'tier_1', lr: 0.84, bcr: 0.84, status: 'watch',
-    totalPremium: 496000, totalPayout: 416640, totalClaims: 1204, monsoonMult: 1.6,
+    trend: mkTrend([0.38,0.42,0.52,0.55,0.51,0.48,0.44,0.46], 62000) },
+  { name: 'Delhi',     state: 'Delhi',          tier: 'tier_1', lr: 0.55, bcr: 0.55, status: 'optimal',
+    totalPremium: 496000, totalPayout: 272800, totalClaims: 1058, monsoonMult: 1.6,
     urbanPct: 68, semiUrbanPct: 24, ruralPct: 8,
-    trend: mkTrend([0.91,0.88,0.82,0.79,0.81,0.86,0.84,0.83], 62000) },
-  { name: 'Bangalore', state: 'Karnataka',      tier: 'tier_1', lr: 0.58, bcr: 0.58, status: 'optimal',
-    totalPremium: 496000, totalPayout: 287680, totalClaims: 891,  monsoonMult: 1.8,
+    trend: mkTrend([0.58,0.56,0.53,0.51,0.54,0.57,0.55,0.54], 62000) },
+  { name: 'Bangalore', state: 'Karnataka',      tier: 'tier_1', lr: 0.42, bcr: 0.42, status: 'healthy',
+    totalPremium: 496000, totalPayout: 208320, totalClaims: 920,  monsoonMult: 1.8,
     urbanPct: 75, semiUrbanPct: 18, ruralPct: 7,
-    trend: mkTrend([0.54,0.56,0.60,0.58,0.57,0.55,0.62,0.60], 62000) },
-  { name: 'Chennai',   state: 'Tamil Nadu',     tier: 'tier_1', lr: 0.69, bcr: 0.69, status: 'optimal',
-    totalPremium: 496000, totalPayout: 342240, totalClaims: 1058, monsoonMult: 2.0,
+    trend: mkTrend([0.38,0.40,0.44,0.42,0.41,0.39,0.45,0.43], 62000) },
+  { name: 'Chennai',   state: 'Tamil Nadu',     tier: 'tier_1', lr: 0.52, bcr: 0.52, status: 'healthy',
+    totalPremium: 496000, totalPayout: 257920, totalClaims: 964,  monsoonMult: 2.0,
     urbanPct: 65, semiUrbanPct: 25, ruralPct: 10,
-    trend: mkTrend([0.72,0.68,0.65,0.71,0.69,0.68,0.70,0.72], 62000) },
-  { name: 'Kolkata',   state: 'West Bengal',    tier: 'tier_1', lr: 0.72, bcr: 0.72, status: 'watch',
-    totalPremium: 496000, totalPayout: 357120, totalClaims: 1109, monsoonMult: 2.4,
+    trend: mkTrend([0.54,0.51,0.49,0.53,0.52,0.51,0.53,0.55], 62000) },
+  { name: 'Kolkata',   state: 'West Bengal',    tier: 'tier_1', lr: 0.45, bcr: 0.45, status: 'healthy',
+    totalPremium: 496000, totalPayout: 223200, totalClaims: 851,  monsoonMult: 2.4,
     urbanPct: 62, semiUrbanPct: 25, ruralPct: 13,
-    trend: mkTrend([0.68,0.71,0.75,0.73,0.70,0.72,0.74,0.73], 62000) },
-  // Tier 2 — Major Cities (1000 riders × ₹45 avg/week)
-  { name: 'Pune',      state: 'Maharashtra',    tier: 'tier_2', lr: 0.55, bcr: 0.55, status: 'healthy',
-    totalPremium: 360000, totalPayout: 198000,  totalClaims: 614,  monsoonMult: 1.8,
+    trend: mkTrend([0.42,0.44,0.48,0.46,0.43,0.45,0.47,0.46], 62000) },
+  // Tier 2 — Major Cities (1000 riders × ₹45 avg/week × 8 weeks = ₹360,000)
+  { name: 'Pune',      state: 'Maharashtra',    tier: 'tier_2', lr: 0.35, bcr: 0.35, status: 'healthy',
+    totalPremium: 360000, totalPayout: 126000,  totalClaims: 897,  monsoonMult: 1.8,
     urbanPct: 60, semiUrbanPct: 25, ruralPct: 15,
-    trend: mkTrend([0.52,0.54,0.56,0.55,0.53,0.56,0.55,0.57], 45000) },
-  { name: 'Hyderabad', state: 'Telangana',      tier: 'tier_2', lr: 0.62, bcr: 0.62, status: 'optimal',
-    totalPremium: 360000, totalPayout: 223200,  totalClaims: 692,  monsoonMult: 1.5,
+    trend: mkTrend([0.32,0.34,0.36,0.35,0.33,0.36,0.35,0.37], 45000) },
+  { name: 'Hyderabad', state: 'Telangana',      tier: 'tier_2', lr: 0.37, bcr: 0.37, status: 'healthy',
+    totalPremium: 360000, totalPayout: 133200,  totalClaims: 872,  monsoonMult: 1.5,
     urbanPct: 65, semiUrbanPct: 22, ruralPct: 13,
-    trend: mkTrend([0.59,0.62,0.64,0.61,0.63,0.62,0.60,0.63], 45000) },
-  { name: 'Ahmedabad', state: 'Gujarat',        tier: 'tier_2', lr: 0.65, bcr: 0.65, status: 'optimal',
-    totalPremium: 360000, totalPayout: 234000,  totalClaims: 725,  monsoonMult: 1.4,
+    trend: mkTrend([0.34,0.37,0.39,0.36,0.38,0.37,0.35,0.38], 45000) },
+  { name: 'Ahmedabad', state: 'Gujarat',        tier: 'tier_2', lr: 0.40, bcr: 0.40, status: 'healthy',
+    totalPremium: 360000, totalPayout: 144000,  totalClaims: 911,  monsoonMult: 1.4,
     urbanPct: 58, semiUrbanPct: 28, ruralPct: 14,
-    trend: mkTrend([0.63,0.68,0.65,0.66,0.64,0.65,0.63,0.66], 45000) },
-  { name: 'Jaipur',    state: 'Rajasthan',      tier: 'tier_2', lr: 0.67, bcr: 0.67, status: 'optimal',
-    totalPremium: 360000, totalPayout: 241200,  totalClaims: 747,  monsoonMult: 1.3,
+    trend: mkTrend([0.38,0.42,0.40,0.41,0.39,0.40,0.38,0.41], 45000) },
+  { name: 'Jaipur',    state: 'Rajasthan',      tier: 'tier_2', lr: 0.38, bcr: 0.38, status: 'healthy',
+    totalPremium: 360000, totalPayout: 136800,  totalClaims: 1009,  monsoonMult: 1.3,
     urbanPct: 55, semiUrbanPct: 30, ruralPct: 15,
-    trend: mkTrend([0.65,0.69,0.68,0.67,0.65,0.68,0.67,0.68], 45000) },
-  // Tier 3 — Emerging (1000 riders × ₹30 avg/week)
-  { name: 'Lucknow',   state: 'Uttar Pradesh',  tier: 'tier_3', lr: 0.59, bcr: 0.59, status: 'optimal',
-    totalPremium: 240000, totalPayout: 141600,  totalClaims: 439,  monsoonMult: 2.0,
+    trend: mkTrend([0.36,0.39,0.38,0.37,0.36,0.39,0.38,0.39], 45000) },
+  // Tier 3 — Emerging (1000 riders × ₹30 avg/week × 8 weeks = ₹240,000)
+  { name: 'Lucknow',   state: 'Uttar Pradesh',  tier: 'tier_3', lr: 0.34, bcr: 0.34, status: 'healthy',
+    totalPremium: 240000, totalPayout: 81600,  totalClaims: 922,  monsoonMult: 2.0,
     urbanPct: 50, semiUrbanPct: 30, ruralPct: 20,
-    trend: mkTrend([0.56,0.58,0.61,0.59,0.57,0.60,0.59,0.60], 30000) },
-  { name: 'Indore',    state: 'Madhya Pradesh', tier: 'tier_3', lr: 0.52, bcr: 0.52, status: 'healthy',
-    totalPremium: 240000, totalPayout: 124800,  totalClaims: 387,  monsoonMult: 1.5,
+    trend: mkTrend([0.31,0.33,0.36,0.34,0.32,0.35,0.34,0.35], 30000) },
+  { name: 'Indore',    state: 'Madhya Pradesh', tier: 'tier_3', lr: 0.32, bcr: 0.32, status: 'healthy',
+    totalPremium: 240000, totalPayout: 76800,  totalClaims: 969,  monsoonMult: 1.5,
     urbanPct: 55, semiUrbanPct: 28, ruralPct: 17,
-    trend: mkTrend([0.50,0.52,0.54,0.51,0.53,0.52,0.50,0.53], 30000) },
-  { name: 'Patna',     state: 'Bihar',          tier: 'tier_3', lr: 0.89, bcr: 0.89, status: 'critical',
-    totalPremium: 240000, totalPayout: 213600,  totalClaims: 662,  monsoonMult: 2.8,
+    trend: mkTrend([0.30,0.32,0.34,0.31,0.33,0.32,0.30,0.33], 30000) },
+  { name: 'Patna',     state: 'Bihar',          tier: 'tier_3', lr: 0.37, bcr: 0.37, status: 'healthy',
+    totalPremium: 240000, totalPayout: 88800,  totalClaims: 1002,  monsoonMult: 2.8,
     urbanPct: 45, semiUrbanPct: 30, ruralPct: 25,
-    trend: mkTrend([0.95,0.91,0.88,0.92,0.86,0.89,0.93,0.90], 30000) },
-  { name: 'Bhopal',    state: 'Madhya Pradesh', tier: 'tier_3', lr: 0.53, bcr: 0.53, status: 'healthy',
-    totalPremium: 240000, totalPayout: 127200,  totalClaims: 394,  monsoonMult: 1.6,
+    trend: mkTrend([0.39,0.37,0.35,0.38,0.34,0.37,0.38,0.36], 30000) },
+  { name: 'Bhopal',    state: 'Madhya Pradesh', tier: 'tier_3', lr: 0.26, bcr: 0.26, status: 'healthy',
+    totalPremium: 240000, totalPayout: 62400,  totalClaims: 857,  monsoonMult: 1.6,
     urbanPct: 52, semiUrbanPct: 28, ruralPct: 20,
-    trend: mkTrend([0.51,0.53,0.55,0.52,0.54,0.53,0.51,0.54], 30000) },
+    trend: mkTrend([0.24,0.26,0.28,0.25,0.27,0.26,0.24,0.27], 30000) },
 ];
 
 // ─── Platform Totals ──────────────────────────────────────────────
@@ -615,7 +618,7 @@ export default function ActuarialDashboard() {
           <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#34d399]" /> Tier 3 — Emerging Cities
             <ChevronRight className="w-3 h-3 text-gray-600" />
-            <span className="text-gray-600 normal-case font-normal">Patna suspended due to Bihar flood risk</span>
+            <span className="text-gray-600 normal-case font-normal">Lower premiums, higher seasonal flood risk</span>
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {tier3.map(c => (

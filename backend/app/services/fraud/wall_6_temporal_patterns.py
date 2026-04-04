@@ -67,7 +67,14 @@ async def check_temporal_patterns(db: AsyncSession, rider_id: int) -> dict:
         claim_gaps = []
         for i in range(1, len(rider_claims)):
             if rider_claims[i - 1].event_time and rider_claims[i].event_time:
-                gap = (rider_claims[i - 1].event_time - rider_claims[i].event_time).days
+                t1 = rider_claims[i - 1].event_time
+                t2 = rider_claims[i].event_time
+                # Normalize to naive to avoid offset-aware vs offset-naive errors
+                if t1.tzinfo is not None:
+                    t1 = t1.replace(tzinfo=None)
+                if t2.tzinfo is not None:
+                    t2 = t2.replace(tzinfo=None)
+                gap = (t1 - t2).days
                 claim_gaps.append(gap)
         if claim_gaps:
             avg_gap = sum(claim_gaps) / len(claim_gaps)

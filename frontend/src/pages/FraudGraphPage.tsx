@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShieldAlert, ShieldCheck, Activity, Info, Map as MapIcon, Layers, Radio,
   Crosshair, ChevronRight, AlertCircle, Zap, CheckCircle2, Clock,
-  Users, GitBranch, MapPin, Wifi, Smartphone, AlertTriangle, RotateCcw, Eye,
+  Users, GitBranch, MapPin, Wifi, Smartphone, RotateCcw, Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -240,7 +240,7 @@ export default function FraudGraphPage() {
   }, [nodes]);
 
   // Current pipeline phase label
-  const currentPhase = PIPELINE_PHASES.find(ph => simProgress < ph.pct) ?? PIPELINE_PHASES[3];
+
 
   return (
     <div className={cn("flex flex-col h-[calc(100vh-4rem)] w-full overflow-hidden", scenario && "border-t-2", scenario?.weatherType === 'rain' && 'border-blue-500/50', scenario?.weatherType === 'heatwave' && 'border-orange-500/50', scenario?.weatherType === 'bandh' && 'border-red-500/50', scenario?.weatherType === 'attack' && 'border-red-700/50')}>

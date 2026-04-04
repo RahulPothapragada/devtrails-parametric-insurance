@@ -13,6 +13,7 @@ import StoryMode from './pages/StoryMode';
 import HeroDemo from './pages/HeroDemo';
 import ActuarialDashboard from './pages/ActuarialDashboard'; // [CORE PRESERVED]
 import DataTimeline from './pages/DataTimeline';
+import RiderAuth from './pages/RiderAuth';
 import Payouts from './pages/Payouts';
 import WeatherEffects, { type WeatherType } from './components/ui/WeatherEffects';
 
@@ -126,6 +127,7 @@ function AnimatedRoutes() {
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<Landing />} />
         <Route path="/rider" element={<RiderDashboard />} />
+        <Route path="/rider/auth" element={<RiderAuth />} />
         <Route path="/payouts" element={<Payouts />} />
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/fraud" element={<FraudDefense />} />

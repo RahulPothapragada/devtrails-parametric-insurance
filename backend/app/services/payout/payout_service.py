@@ -232,3 +232,164 @@ async def payout_status_check(claim_id: int, db: AsyncSession) -> dict:
         "confirmed_at": claim.payout_confirmed_at.isoformat() if claim.payout_confirmed_at else None,
         "failure_reason": claim.payout_failure_reason,
     }
+
+
+async def auto_payout_all(db: AsyncSession) -> dict:
+    """
+    Instant Auto-Disburse: processes ALL approved/auto_approved unpaid claims
+    in a single pass. If a payout fails, auto-retries once with channel fallback
+    (UPI → IMPS). Returns a detailed report for the frontend demo.
+    """
+    # Find all eligible claims
+    result = await db.execute(
+        select(Claim).where(
+            Claim.status.in_([ClaimStatus.AUTO_APPROVED, ClaimStatus.APPROVED]),
+            Claim.payout_status.in_([PayoutStatus.NOT_INITIATED, PayoutStatus.ROLLED_BACK]),
+            Claim.payout_amount > 0,
+        )
+    )
+    claims = result.scalars().all()
+
+    report = {
+        "total_eligible": len(claims),
+        "processed": 0,
+        "succeeded": 0,
+        "failed_then_recovered": 0,
+        "permanently_failed": 0,
+        "total_disbursed": 0.0,
+        "upi_count": 0,
+        "imps_count": 0,
+        "transactions": [],
+    }
+
+    for claim in claims:
+        rider_result = await db.execute(select(Rider).where(Rider.id == claim.rider_id))
+        rider = rider_result.scalar_one_or_none()
+        if not rider:
+            continue
+
+        txn_record = {
+            "claim_id": claim.id,
+            "rider_id": rider.id,
+            "rider_name": rider.name,
+            "amount": claim.payout_amount,
+            "trigger_type": claim.trigger_type.value if claim.trigger_type else "unknown",
+            "upi_id": rider.upi_id,
+            "attempts": [],
+            "final_status": "pending",
+            "final_channel": None,
+            "final_ref": None,
+        }
+
+        # ── Attempt 1: Primary channel (UPI preferred) ──
+        primary_channel = _select_channel(rider)
+        ref1 = _generate_ref(primary_channel)
+        now = datetime.now(timezone.utc)
+
+        claim.payout_status = PayoutStatus.INITIATED
+        claim.payout_channel = primary_channel
+        claim.payout_ref = ref1
+        claim.payout_initiated_at = now
+        claim.payout_failure_reason = None
+        await db.flush()
+
+        success_rate = CHANNEL_SUCCESS_RATE.get(primary_channel, 0.95)
+        attempt1_success = random.random() < success_rate
+
+        attempt1 = {
+            "attempt": 1,
+            "channel": primary_channel.value,
+            "ref": ref1,
+            "success": attempt1_success,
+            "failure_reason": None,
+        }
+
+        if attempt1_success:
+            # Confirm immediately
+            claim.payout_status = PayoutStatus.CONFIRMED
+            claim.payout_confirmed_at = datetime.now(timezone.utc)
+            claim.status = ClaimStatus.PAID
+            claim.paid_at = claim.payout_confirmed_at
+            await db.flush()
+
+            attempt1["status"] = "confirmed"
+            txn_record["attempts"].append(attempt1)
+            txn_record["final_status"] = "paid"
+            txn_record["final_channel"] = primary_channel.value
+            txn_record["final_ref"] = ref1
+            report["succeeded"] += 1
+            report["total_disbursed"] += claim.payout_amount
+            if primary_channel == PayoutChannel.UPI:
+                report["upi_count"] += 1
+            else:
+                report["imps_count"] += 1
+        else:
+            # Failed — record reason
+            reason = random.choice(FAILURE_REASONS)
+            attempt1["failure_reason"] = reason
+            attempt1["status"] = "failed"
+            txn_record["attempts"].append(attempt1)
+
+            # ── Rollback ──
+            claim.payout_status = PayoutStatus.ROLLED_BACK
+            claim.status = ClaimStatus.APPROVED
+            claim.payout_failure_reason = reason
+            await db.flush()
+
+            # ── Attempt 2: Fallback channel ──
+            fallback_channel = PayoutChannel.IMPS if primary_channel == PayoutChannel.UPI else PayoutChannel.UPI
+            ref2 = _generate_ref(fallback_channel)
+
+            claim.payout_status = PayoutStatus.INITIATED
+            claim.payout_channel = fallback_channel
+            claim.payout_ref = ref2
+            claim.payout_initiated_at = datetime.now(timezone.utc)
+            claim.payout_failure_reason = None
+            await db.flush()
+
+            # Retry has a boosted success rate (fallback channels are more reliable for retries)
+            retry_success = random.random() < 0.98
+
+            attempt2 = {
+                "attempt": 2,
+                "channel": fallback_channel.value,
+                "ref": ref2,
+                "success": retry_success,
+                "failure_reason": None,
+                "status": "confirmed" if retry_success else "failed",
+            }
+
+            if retry_success:
+                claim.payout_status = PayoutStatus.CONFIRMED
+                claim.payout_confirmed_at = datetime.now(timezone.utc)
+                claim.status = ClaimStatus.PAID
+                claim.paid_at = claim.payout_confirmed_at
+                await db.flush()
+
+                txn_record["final_status"] = "recovered"
+                txn_record["final_channel"] = fallback_channel.value
+                txn_record["final_ref"] = ref2
+                report["failed_then_recovered"] += 1
+                report["total_disbursed"] += claim.payout_amount
+                report["imps_count"] += 1  # fallback is always IMPS for UPI failures
+            else:
+                reason2 = random.choice(FAILURE_REASONS)
+                attempt2["failure_reason"] = reason2
+                claim.payout_status = PayoutStatus.FAILED
+                claim.payout_failure_reason = f"Retry failed: {reason2}"
+                await db.flush()
+
+                txn_record["final_status"] = "permanently_failed"
+                report["permanently_failed"] += 1
+
+            txn_record["attempts"].append(attempt2)
+
+        report["processed"] += 1
+        report["transactions"].append(txn_record)
+
+    report["total_disbursed"] = round(report["total_disbursed"], 2)
+    report["success_rate"] = (
+        round((report["succeeded"] + report["failed_then_recovered"]) / report["processed"] * 100, 1)
+        if report["processed"] > 0 else 100.0
+    )
+    return report

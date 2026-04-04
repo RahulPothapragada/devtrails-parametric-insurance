@@ -252,7 +252,7 @@ export default function AdminDashboard() {
                     />
                     <Tooltip
                       contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
-                      formatter={(val: number, name: string) => [`₹${val.toLocaleString('en-IN')}`, name]}
+                      formatter={(val: unknown, name: unknown) => [`₹${Number(val).toLocaleString('en-IN')}`, String(name)]}
                     />
                     <Area type="monotone" dataKey="premium_collected" name="Premium" stroke="#10a37f" fillOpacity={1} fill="url(#colorPremium)" strokeWidth={2} />
                     <Area type="monotone" dataKey="total_payout" name="Payout" stroke="#ef4444" fillOpacity={1} fill="url(#colorPayout)" strokeWidth={2} />
