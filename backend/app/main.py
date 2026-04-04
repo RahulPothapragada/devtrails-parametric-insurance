@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from app.api.routes import auth, riders, policies, claims, triggers, pricing, admin, fraud, payouts, underwriting, payments
+from app.api.routes import auth, riders, policies, claims, triggers, pricing, admin, fraud, payouts, underwriting, payments, data
 from app.core.config import settings
 from app.core.database import engine, Base
 from app.services.triggers.trigger_engine import TriggerEngine
@@ -58,6 +58,7 @@ app.include_router(fraud.router, prefix="/api/fraud", tags=["Fraud Detection"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin Dashboard"])
 app.include_router(payouts.router, prefix="/api/payouts", tags=["Payouts"])
 app.include_router(payments.router, prefix="/api/payments", tags=["Payments — Razorpay"])
+app.include_router(data.router,     prefix="/api/data",     tags=["Data Timeline"])
 
 
 @app.get("/", tags=["Health"])

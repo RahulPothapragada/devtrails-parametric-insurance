@@ -12,6 +12,7 @@ import FraudGraphPage from './pages/FraudGraphPage';
 import StoryMode from './pages/StoryMode';
 import HeroDemo from './pages/HeroDemo';
 import ActuarialDashboard from './pages/ActuarialDashboard'; // [CORE PRESERVED]
+import DataTimeline from './pages/DataTimeline';
 import Payouts from './pages/Payouts';
 import WeatherEffects, { type WeatherType } from './components/ui/WeatherEffects';
 
@@ -83,14 +84,23 @@ function Navbar({ currentEffect }: { currentEffect: WeatherType }) {
           >
             Admin
           </Link>
-          <Link 
-            to="/actuarial" 
+          <Link
+            to="/actuarial"
             className={cn(
               "text-[10px] sm:text-xs font-bold uppercase tracking-wider px-2.5 py-2 rounded-xl transition-all",
               location.pathname === '/actuarial' ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
             )}
           >
             Actuarial
+          </Link>
+          <Link
+            to="/data"
+            className={cn(
+              "text-[10px] sm:text-xs font-bold uppercase tracking-wider px-2.5 py-2 rounded-xl transition-all",
+              location.pathname === '/data' ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            )}
+          >
+            Data
           </Link>
         </div>
 
@@ -124,6 +134,7 @@ function AnimatedRoutes() {
         <Route path="/story" element={<StoryMode />} />
         <Route path="/hero-demo" element={<HeroDemo />} />
         <Route path="/actuarial" element={<ActuarialDashboard />} />
+        <Route path="/data" element={<DataTimeline />} />
       </Routes>
     </AnimatePresence>
   );
