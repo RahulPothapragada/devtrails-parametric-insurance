@@ -39,7 +39,7 @@ const towerIcon = L.divIcon({
 
 const CITIES = [
   { id: 'Mumbai', name: 'Mumbai', lat: 19.12, lng: 72.86, tier: 'Tier 1' },
-  { id: 'Delhi', name: 'Delhi NCR', lat: 28.6139, lng: 77.209, tier: 'Tier 1' },
+  { id: 'Delhi', name: 'Delhi', lat: 28.6139, lng: 77.209, tier: 'Tier 1' },
   { id: 'Bangalore', name: 'Bangalore', lat: 12.9716, lng: 77.5946, tier: 'Tier 1' },
   { id: 'Chennai', name: 'Chennai', lat: 13.0827, lng: 80.2707, tier: 'Tier 1' },
   { id: 'Kolkata', name: 'Kolkata', lat: 22.5726, lng: 88.3639, tier: 'Tier 1' },
@@ -95,12 +95,16 @@ export default function FraudGraphPage() {
 
 
   const dashboardStats = useMemo(() => {
-    const spoofing = nodes.filter(n => n.status === 'spoofing').length;
-    const attacks = nodes.filter(n => n.status === 'attack').length;
+    const riderNodes = nodes.filter(n => n.type === 'rider');
+    const spoofing = riderNodes.filter(n => n.status === 'spoofing').length;
+    const attacks = riderNodes.filter(n => n.status === 'attack').length;
+    const anomalous = spoofing + attacks;
+    const anomalyPct = riderNodes.length > 0 ? Math.round(anomalous / riderNodes.length * 100) : 0;
     return {
-      activeNodes: nodes.length,
+      activeNodes: riderNodes.length,
       threatLevel: attacks > 0 ? 'CRITICAL' : spoofing > 0 ? 'WARNING' : 'SECURE',
-      totalSpoofing: spoofing + attacks
+      totalSpoofing: anomalous,
+      anomalyPct,
     };
   }, [nodes]);
 
@@ -122,7 +126,7 @@ export default function FraudGraphPage() {
           {/* Stats Bar */}
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-muted/30 p-3 rounded-lg border border-border relative">
-              <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest block mb-1">Active Nodes</span>
+              <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest block mb-1">Active Riders</span>
               <span className="text-xl font-bold text-foreground font-mono">{loading ? '...' : dashboardStats.activeNodes}</span>
               {loading && <span className="absolute top-3 right-3 flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span></span>}
             </div>
@@ -136,6 +140,38 @@ export default function FraudGraphPage() {
               </span>
             </div>
           </div>
+
+          {/* Anomaly Rate — live computed from real rider nodes */}
+          {!loading && dashboardStats.activeNodes > 0 && (
+            <div className={cn(
+              "p-3 rounded-lg border",
+              dashboardStats.anomalyPct > 15
+                ? "bg-destructive/10 border-destructive/30"
+                : "bg-muted/30 border-border"
+            )}>
+              <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest block mb-2">Anomalous Behaviour</span>
+              <div className="flex items-end gap-2 mb-2">
+                <span className={cn(
+                  "text-2xl font-bold font-mono",
+                  dashboardStats.anomalyPct > 15 ? "text-destructive" : "text-[#f59e0b]"
+                )}>
+                  {dashboardStats.anomalyPct}%
+                </span>
+                <span className="text-xs text-muted-foreground pb-0.5">
+                  of riders in {activeCity.name}
+                </span>
+              </div>
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className={cn("h-full rounded-full transition-all duration-700", dashboardStats.anomalyPct > 15 ? "bg-destructive" : "bg-[#f59e0b]")}
+                  style={{ width: `${dashboardStats.anomalyPct}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1.5">
+                {dashboardStats.totalSpoofing} riders flagged · {dashboardStats.activeNodes - dashboardStats.totalSpoofing} clean
+              </p>
+            </div>
+          )}
 
           {/* Controls */}
           <div className="space-y-4">

@@ -375,6 +375,58 @@ async def weekly_ledger(city_name: str, weeks: int = 8, db: AsyncSession = Depen
         ],
     }
 
+@router.get("/fraud-summary")
+async def fraud_network_summary(db: AsyncSession = Depends(get_db)):
+    """Platform-wide fraud summary — real rider anomaly stats for the 9-Wall dashboard."""
+    total_riders = (await db.execute(select(func.count(Rider.id)))).scalar() or 0
+    suspicious_riders = (await db.execute(
+        select(func.count(Rider.id)).where(Rider.is_suspicious == True)
+    )).scalar() or 0
+    high_fraud = (await db.execute(
+        select(func.count(Rider.id)).where(Rider.fraud_score > 70)
+    )).scalar() or 0
+    anomalous = suspicious_riders + high_fraud
+    anomaly_rate = round(anomalous / total_riders * 100, 1) if total_riders > 0 else 0
+
+    # Count syndicates: shared device fingerprints among suspicious riders
+    from sqlalchemy import text as sa_text
+    syndicate_result = await db.execute(sa_text("""
+        SELECT COUNT(*) FROM (
+            SELECT device_fingerprint FROM riders
+            WHERE is_suspicious = 1 AND device_fingerprint IS NOT NULL
+            GROUP BY device_fingerprint HAVING COUNT(*) > 1
+        )
+    """))
+    syndicate_count = syndicate_result.scalar() or 0
+
+    # Blocked premium = sum of premiums paid by suspicious riders
+    blocked_result = await db.execute(sa_text("""
+        SELECT COALESCE(SUM(p.premium_amount), 0)
+        FROM policies p
+        JOIN riders r ON p.rider_id = r.id
+        WHERE r.is_suspicious = 1
+    """))
+    blocked_premium = float(blocked_result.scalar() or 0)
+
+    # Top syndicate zones (zones with most suspicious riders)
+    top_zones_result = await db.execute(sa_text("""
+        SELECT z.name, COUNT(r.id) as cnt
+        FROM riders r JOIN zones z ON r.zone_id = z.id
+        WHERE r.is_suspicious = 1
+        GROUP BY z.id, z.name ORDER BY cnt DESC LIMIT 3
+    """))
+    top_zones = [{"zone": row[0], "count": row[1]} for row in top_zones_result.fetchall()]
+
+    return {
+        "total_riders": total_riders,
+        "anomalous_riders": anomalous,
+        "anomaly_rate_pct": anomaly_rate,
+        "syndicate_count": syndicate_count,
+        "blocked_premium": round(blocked_premium, 2),
+        "top_syndicate_zones": top_zones,
+    }
+
+
 @router.get("/maps/network")
 async def get_map_network(city_name: str, limit: int = 400, db: AsyncSession = Depends(get_db)):
     """Fetch live riders from the database organically scattered around their Zone centers."""

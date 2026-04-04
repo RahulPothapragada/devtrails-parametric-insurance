@@ -75,8 +75,8 @@ export default function AdminDashboard() {
 
       if (actuarialRes.ok) {
         const data = await actuarialRes.json();
-        // Flatten all cities from tier breakdown
-        const all: CityActuarial[] = [
+        // Use all_cities which is a flat list of only cities in the DB
+        const all: CityActuarial[] = data.all_cities || [
           ...(data.tier_breakdown?.tier_1 || []),
           ...(data.tier_breakdown?.tier_2 || []),
           ...(data.tier_breakdown?.tier_3 || []),
@@ -266,17 +266,27 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Zone Risk — real from DB */}
+          {/* Zone Risk — real from DB, top zones by flood_risk_score */}
           <div className="rounded-xl border bg-card p-6 flex flex-col shadow-sm">
-            <h2 className="text-lg font-semibold text-foreground mb-4">Top Risk Zones</h2>
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-foreground">Top Risk Zones</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Ranked by flood + heat risk score · live from DB</p>
+            </div>
             <div className="flex flex-col gap-4 flex-1 justify-center">
               {topZones.length > 0 ? topZones.map((zone, idx) => {
+                const floodPct = Math.round(zone.flood * 100);
+                const heatPct = Math.round(zone.heat * 100);
                 const riskScore = Math.round(Math.max(zone.flood, zone.heat) * 100);
+                const riskColor = riskScore > 80 ? '#ef4444' : riskScore > 60 ? '#f59e0b' : '#10a37f';
+                const dominantRisk = zone.flood >= zone.heat ? 'Flood' : 'Heat';
                 return (
                   <div key={idx} className="flex flex-col gap-1.5">
-                    <div className="flex justify-between text-sm">
-                      <span className="font-medium text-foreground truncate max-w-[140px]" title={zone.zone}>{zone.zone}</span>
-                      <span className={`font-semibold ${riskScore > 80 ? 'text-[#ef4444]' : riskScore > 60 ? 'text-[#f59e0b]' : 'text-[#10a37f]'}`}>
+                    <div className="flex justify-between items-start text-sm gap-2">
+                      <div className="min-w-0">
+                        <span className="font-medium text-foreground block truncate" title={zone.zone}>{zone.zone}</span>
+                        <span className="text-[10px] text-muted-foreground">{dominantRisk} risk · {zone.tier?.toUpperCase()}</span>
+                      </div>
+                      <span className="font-bold shrink-0 font-mono" style={{ color: riskColor }}>
                         {riskScore}%
                       </span>
                     </div>
@@ -285,17 +295,18 @@ export default function AdminDashboard() {
                         initial={{ width: 0 }}
                         animate={{ width: `${riskScore}%` }}
                         transition={{ duration: 0.8, delay: idx * 0.1 }}
-                        className={`h-full ${riskScore > 80 ? 'bg-[#ef4444]' : riskScore > 60 ? 'bg-[#f59e0b]' : 'bg-[#10a37f]'}`}
+                        className="h-full rounded-full"
+                        style={{ backgroundColor: riskColor }}
                       />
                     </div>
                     <div className="flex gap-3 text-[10px] text-muted-foreground">
-                      <span>Flood: {Math.round(zone.flood * 100)}%</span>
-                      <span>Heat: {Math.round(zone.heat * 100)}%</span>
+                      <span>🌊 Flood {floodPct}%</span>
+                      <span>🌡️ Heat {heatPct}%</span>
                     </div>
                   </div>
                 );
               }) : (
-                <div className="text-sm text-muted-foreground text-center">{loading ? 'Loading...' : 'No zone data'}</div>
+                <div className="text-sm text-muted-foreground text-center">{loading ? 'Loading zone data...' : 'No zone data available'}</div>
               )}
             </div>
           </div>
