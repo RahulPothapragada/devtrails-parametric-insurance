@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timezone, timedelta, date
+import asyncio
 import math
 import time
 
@@ -261,8 +262,9 @@ async def data_timeline(
     }
 
     # ── Monte Carlo projection (12 weeks) ─────────────────────────────────────
+    # Run in a thread so CPU-bound work doesn't block the async event loop
     next_month = (now.month % 12) + 1
-    mc_results = _monte_carlo(avg_lr, avg_prem, 12, scenario, city_name, next_month)
+    mc_results = await asyncio.to_thread(_monte_carlo, avg_lr, avg_prem, 12, scenario, city_name, next_month)
     projection = []
     for i, mc in enumerate(mc_results):
         proj_date = monday + timedelta(weeks=(i + 1))
