@@ -1,5 +1,52 @@
 # FlowSecure — AI-Powered Income Protection for Quick-Commerce Delivery Workers
 
+> Phase 2 submission — fully working prototype with real backend, live simulations, Razorpay payments, 13-city PAN India data, and Monte Carlo actuarial projections.
+
+---
+
+## ⚡ Judge Quick-Start (5 minutes)
+
+```bash
+# 1. Clone
+git clone https://github.com/RahulPothapragada/devtrails-parametric-insurance.git
+cd devtrails-parametric-insurance
+
+# 2. Backend
+cd backend
+python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env          # edit .env if you want real API/Razorpay keys
+                              # app works fully in sandbox mode without any keys
+
+# 3. Seed the database (creates flowsecure.db with 13,000 riders, 13 cities, 8 weeks of ledger data)
+python -m app.mock_data.seed_db
+
+# 4. Start backend
+uvicorn app.main:app --reload --port 8000
+# API docs → http://localhost:8000/docs
+
+# 5. Frontend (new terminal)
+cd ../frontend
+npm install
+npm run dev
+# App → http://localhost:5173
+```
+
+**Note:** `flowsecure.db` is not in this repo (160 MB — exceeds GitHub limits). Run `seed_db` to generate it. Takes ~30 seconds.
+
+### Key pages to demo
+| Page | URL | What it shows |
+|------|-----|---------------|
+| Simulate | `/simulate` | Inject live weather/AQI/traffic triggers |
+| Fraud Graph | `/graph` | Real-time geospatial fraud detection map |
+| 9-Wall Defense | `/fraud` | 20% anomaly rate, 9 syndicate rings live feed |
+| Admin | `/admin` | Platform BCR, 13-city health, real DB metrics |
+| Data Timeline | `/data` | 1yr history + live sim + 12-week Monte Carlo |
+| Rider | `/rider` | Buy weekly cover (Razorpay sandbox payment) |
+| Payouts | `/payouts` | Parametric claim history |
+
+---
+
 > This README is intentionally detailed because the Phase 1 submission requires a full explanation of the product logic, pricing model, adversarial defense architecture, and proposed implementation plan — all within this single document.
 
 ---
