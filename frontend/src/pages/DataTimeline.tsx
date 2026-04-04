@@ -10,7 +10,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const API = 'http://localhost:8000/api';
+import { API_BASE } from '@/lib/api';
+const API = API_BASE;
 const POLL_MS = 15_000;
 const SUSPEND = 0.85;
 const TARGET_HI = 0.70;

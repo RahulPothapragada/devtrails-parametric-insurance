@@ -3,7 +3,8 @@ import { motion } from 'framer-motion';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { ShieldAlert, RefreshCw, TrendingUp, AlertTriangle } from 'lucide-react';
 
-const API = 'http://localhost:8000/api';
+import { API_BASE } from '@/lib/api';
+const API = API_BASE;
 
 // ── Types ──
 interface StatsData {

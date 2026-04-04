@@ -8,7 +8,8 @@ import {
 } from 'lucide-react';
 import AnimatedCounter from '../components/ui/AnimatedCounter';
 
-const API = 'http://localhost:8000/api';
+import { API_BASE } from '@/lib/api';
+const API = API_BASE;
 
 // ── Types ──
 interface RzpConfig {

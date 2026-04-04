@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { ShieldAlert, Activity, Smartphone, Wifi, Users, GitBranch, Clock, MapPin, Database, Binary, ShieldCheck } from 'lucide-react';
+import { API_BASE } from '@/lib/api';
 
 const wallIcons: Record<number, React.ReactNode> = {
   1: <Binary className="w-4 h-4" />,
@@ -46,7 +47,7 @@ export default function FraudDefense() {
 
   // Fetch real fraud summary stats
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/api/admin/fraud-summary')
+    fetch(`${API_BASE}/admin/fraud-summary`)
       .then(r => r.json())
       .then(data => { if (mountedRef.current) setSummary(data); })
       .catch(() => {});
@@ -60,7 +61,7 @@ export default function FraudDefense() {
 
     async function fetchLiveDefense() {
       try {
-        const response = await fetch(`http://127.0.0.1:8000/api/admin/maps/network?city_name=Mumbai`);
+        const response = await fetch(`${API_BASE}/admin/maps/network?city_name=Mumbai`);
         if (!response.ok) return;
         const payload = await response.json();
         const nodes = payload.nodes || [];

@@ -7,7 +7,8 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
-const API = 'http://localhost:8000/api';
+import { API_BASE } from '@/lib/api';
+const API = API_BASE;
 
 export default function Payouts() {
   const [summary, setSummary] = useState<any>(null);

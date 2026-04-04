@@ -10,6 +10,7 @@ import {
   Users, GitBranch, MapPin, Wifi, Smartphone, RotateCcw, Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { API_BASE } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { type Scenario, type SimEvent } from '../data/simulationData';
 
@@ -210,7 +211,7 @@ export default function FraudGraphPage() {
     async function fetchLiveNetwork() {
       setLoading(true);
       try {
-        const response = await fetch(`http://127.0.0.1:8000/api/admin/maps/network?city_name=${activeCity.id}`);
+        const response = await fetch(`${API_BASE}/admin/maps/network?city_name=${activeCity.id}`);
         if (!response.ok) throw new Error('Network Database Offline');
         const payload = await response.json();
         const baseTower = { id: `T-${activeCity.id}`, name: `${activeCity.name} Central Hub`, type: 'tower', lat: payload.city_center[0], lng: payload.city_center[1] };

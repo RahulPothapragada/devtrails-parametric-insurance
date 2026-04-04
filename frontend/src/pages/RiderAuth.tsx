@@ -7,7 +7,8 @@ import {
   AlertCircle, CheckCircle2, ChevronLeft, Lock, Wallet
 } from 'lucide-react';
 
-const API = 'http://localhost:8000/api';
+import { API_BASE } from '@/lib/api';
+const API = API_BASE;
 
 type AuthView = 'choice' | 'login' | 'otp' | 'signup';
 
