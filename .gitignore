@@ -24,7 +24,7 @@ Thumbs.db
 # Data
 *.csv
 *.sqlite3
-*.db
+# *.db files are tracked via Git LFS (see .gitattributes)
 *.db-journal
 
 # Large media
