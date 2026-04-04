@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
-import { CloudRain, Sun, Snowflake, AlertTriangle, CloudOff, Zap, GitBranch, BookOpen, ShieldAlert, LineChart } from 'lucide-react';
+import { Zap, GitBranch, BookOpen, ShieldAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Landing from './pages/Landing';
 import RiderDashboard from './pages/RiderDashboard';

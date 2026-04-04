@@ -79,12 +79,12 @@ _POOL_SIZE = len(_FIRST_NAMES_UNIQUE) * len(_LAST_NAMES_UNIQUE)
 def generate_name(index: int) -> str:
     """
     Generate a guaranteed-unique Indian name.
-    First pass: first x last combos (e.g. 130 x 100 = 13,000).
-    If index exceeds pool, append numeric suffix to stay unique.
+    Uses MD5 hash to scatter names uniformly, preventing regional clustering like 'All Khans in Hyderabad'.
     """
-    n = index % _POOL_SIZE
-    first = _FIRST_NAMES_UNIQUE[n % len(_FIRST_NAMES_UNIQUE)]
-    last = _LAST_NAMES_UNIQUE[n // len(_FIRST_NAMES_UNIQUE)]
+    h = int(hashlib.md5(str(index).encode()).hexdigest(), 16)
+    first = _FIRST_NAMES_UNIQUE[h % len(_FIRST_NAMES_UNIQUE)]
+    last = _LAST_NAMES_UNIQUE[(h // len(_FIRST_NAMES_UNIQUE)) % len(_LAST_NAMES_UNIQUE)]
+    
     cycle = index // _POOL_SIZE
     suffix = f" {cycle + 2}" if cycle > 0 else ""
     return f"{first} {last}{suffix}"
@@ -179,8 +179,8 @@ def _generate_suspicious_activity(rider_id, date, zone_lat, zone_lng, trigger_ti
         deliveries = random.randint(0, 3)
         gps_points = _generate_static_gps(zone_lat, zone_lng, 8)
     elif pattern == "wrong_zone":
-        fake_lat = zone_lat + random.uniform(0.05, 0.15)
-        fake_lng = zone_lng + random.uniform(0.05, 0.15)
+        fake_lat = zone_lat + random.uniform(0.015, 0.035)
+        fake_lng = zone_lng + random.uniform(0.015, 0.035)
         login_time = date.replace(hour=random.randint(8, 11))
         hours_active = round(random.uniform(2.0, 4.0), 1)
         deliveries = random.randint(0, 5)
@@ -209,10 +209,10 @@ def _generate_suspicious_activity(rider_id, date, zone_lat, zone_lng, trigger_ti
 
 def _generate_moving_gps(center_lat, center_lng, num_points) -> List[dict]:
     points = []
-    lat, lng = center_lat, center_lng
     for i in range(num_points):
-        lat += random.uniform(-0.005, 0.005)
-        lng += random.uniform(-0.005, 0.005)
+        # Bound wander tightly to prevent landing in the ocean for coastal zones
+        lat = center_lat + random.uniform(-0.008, 0.008)
+        lng = center_lng + random.uniform(-0.008, 0.008)
         points.append({
             "lat": round(lat, 6),
             "lng": round(lng, 6),

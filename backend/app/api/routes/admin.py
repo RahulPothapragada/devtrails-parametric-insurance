@@ -376,42 +376,91 @@ async def weekly_ledger(city_name: str, weeks: int = 8, db: AsyncSession = Depen
     }
 
 @router.get("/maps/network")
-async def get_map_network(city_name: str, limit: int = 150, db: AsyncSession = Depends(get_db)):
+async def get_map_network(city_name: str, limit: int = 400, db: AsyncSession = Depends(get_db)):
     """Fetch live riders from the database organically scattered around their Zone centers."""
     city_result = await db.execute(select(City).where(City.name == city_name))
     city = city_result.scalar_one_or_none()
     if not city:
         raise HTTPException(status_code=404, detail="City not found")
         
-    # Get active riders deeply bounded into this city
+    # Get active riders deeply bounded into this city, randomized to simulate a live sweep
     rider_result = await db.execute(
         select(Rider, Zone)
         .join(Zone, Rider.zone_id == Zone.id)
         .where(Zone.city_id == city.id)
+        .order_by(func.random())
         .limit(limit)
     )
     
+    from collections import defaultdict
+    riders_data = rider_result.all()
+    riders = [r for r, z in riders_data]
+    zones = {r.id: z for r, z in riders_data}
+    
+    # ── Algo Wall 5 (Graph Detection): Identify authentic rings ──
+    device_groups = defaultdict(list)
+    upi_groups = defaultdict(list)
+    
+    for r in riders:
+        # We search specifically for malicious signatures planted by the simulation
+        if r.device_fingerprint and r.is_suspicious:
+            device_groups[r.device_fingerprint].append(r.id)
+        if r.upi_id and "fraud" in r.upi_id:
+            upi_groups[r.upi_id].append(r.id)
+            
+    links = []
+    attack_riders = {}
+    
+    # Map Shared Device Signatures
+    for fp, rids in device_groups.items():
+        if len(rids) > 1:
+            for i in range(len(rids)):
+                attack_riders[rids[i]] = "CRITICAL: Shared Device Array (Emulation)"
+                for j in range(i + 1, len(rids)):
+                    links.append({"from": f"R-{rids[i]}", "to": f"R-{rids[j]}"})
+                    
+    # Map Shared Bank Pools
+    for upi, rids in upi_groups.items():
+        if len(rids) > 1:
+            for i in range(len(rids)):
+                # If they already tripped the device check, elevate to Syndicate
+                if rids[i] in attack_riders:
+                    attack_riders[rids[i]] = "CRITICAL: Multi-Proxy Syndicate (Devices + Bank Pool)"
+                else:
+                    attack_riders[rids[i]] = "CRITICAL: Unified Payout Funnel (Shared UPI)"
+                for j in range(i + 1, len(rids)):
+                    links.append({"from": f"R-{rids[i]}", "to": f"R-{rids[j]}"})
+
     nodes = []
-    for rider, zone in rider_result.all():
-        # Scatter GPS slightly so they organically cluster around their operations zones
-        lat_offset = random.uniform(-0.04, 0.04)
-        lng_offset = random.uniform(-0.04, 0.04)
-        
+    for r in riders:
+        zone = zones[r.id]
+        # Keep the scatter balanced (~1.5km spread) so they cluster around the hub but don't overlap as a solid dot
+        lat_offset = random.uniform(-0.012, 0.012)
+        lng_offset = random.uniform(-0.012, 0.012)
+
         status = 'normal'
         risk = 'low'
-        if rider.is_suspicious or rider.fraud_score > 70:
-            status = 'attack' if rider.fraud_score > 90 else 'spoofing'
-            risk = 'extreme' if rider.fraud_score > 90 else 'high'
+        verdict = 'Nominal Signal Pattern'
+        
+        if r.id in attack_riders:
+            status = 'attack'
+            risk = 'extreme'
+            verdict = attack_riders[r.id]
+        elif r.is_suspicious or r.fraud_score > 70:
+            status = 'spoofing'
+            risk = 'high'
+            verdict = "High Risk Location Mismatch"
             
         nodes.append({
-            "id": f"R-{rider.id}",
-            "name": rider.name,
+            "id": f"R-{r.id}",
+            "name": r.name,
             "lat": zone.lat + lat_offset,
             "lng": zone.lng + lng_offset,
             "type": "rider",
             "risk": risk,
             "status": status,
+            "verdict": verdict,
             "location": zone.name
         })
         
-    return {"city_center": [city.lat, city.lng], "nodes": nodes}
+    return {"city_center": [city.lat, city.lng], "nodes": nodes, "links": links}

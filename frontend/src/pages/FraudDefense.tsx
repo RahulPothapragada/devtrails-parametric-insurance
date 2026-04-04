@@ -32,33 +32,79 @@ export default function FraudDefense() {
     mountedRef.current = true;
     setLogs([]); // Reset logs on mount for a clean start
 
-    const messages = [
-      { code: 'C-898', type: 'Temporal Pattern', msg: 'Behavior aligns with 6-month history.', status: 'secure' },
-      { code: 'C-897', type: 'Motion Sensor', msg: 'GPS moving, accelerometer reads 0 m/s².', status: 'alert' },
-      { code: 'C-896', type: 'Device Hash', msg: 'Unique fingerprint matched.', status: 'secure' },
-      { code: 'C-895', type: 'Graph Analysis', msg: 'Cluster detected: 6 accounts on same IP.', status: 'alert' },
-    ];
+    let interval: ReturnType<typeof setInterval>;
 
-    const interval = setInterval(() => {
-      if (!mountedRef.current) return;
-      
-      const msg = messages[Math.floor(Math.random() * messages.length)];
-      const newLog: LogEntry = {
-        id: Math.random().toString(36).substr(2, 9),
-        timestamp: new Date().toLocaleTimeString([], { hour12: false }),
-        code: msg.code,
-        type: msg.type,
-        message: msg.msg,
-        status: msg.status as 'secure' | 'alert',
-      };
+    async function fetchLiveDefense() {
+      try {
+        const response = await fetch(`http://127.0.0.1:8000/api/admin/maps/network?city_name=Mumbai`);
+        if (!response.ok) return;
+        const payload = await response.json();
+        const nodes = payload.nodes || [];
+        
+        if (!mountedRef.current) return;
+        
+        // Generate logs based on real nodes
+        const combinedQueue: LogEntry[] = [];
+        
+        nodes.forEach((node: any) => {
+          if (node.status === 'attack' || node.status === 'spoofing') {
+            combinedQueue.push({
+              id: Math.random().toString(36).substring(2, 11),
+              timestamp: '', // filled when emitted
+              code: `R-${node.id.split('-').pop()}`,
+              type: node.status === 'attack' ? 'Graph Analysis' : 'Motion Sensor',
+              message: node.verdict || 'Anomaly detected in rider behavior.',
+              status: 'alert',
+            });
+          } else {
+             if (Math.random() > 0.8) {
+                 combinedQueue.push({
+                  id: Math.random().toString(36).substring(2, 11),
+                  timestamp: '',
+                  code: `R-${node.id.split('-').pop()}`,
+                  type: Math.random() > 0.5 ? 'Device Hash' : 'Temporal Pattern',
+                  message: Math.random() > 0.5 ? 'Unique fingerprint matched.' : 'Behavior aligns with history.',
+                  status: 'secure',
+                });
+             }
+          }
+        });
+        
+        // Randomize the queue
+        combinedQueue.sort(() => Math.random() - 0.5);
+        
+        let index = 0;
+        interval = setInterval(() => {
+          if (!mountedRef.current) return;
+          
+          let msg;
+          if (index < combinedQueue.length) {
+            msg = combinedQueue[index++];
+          } else {
+            msg = combinedQueue[Math.floor(Math.random() * combinedQueue.length)];
+          }
 
-      setLogs(prev => [newLog, ...prev].slice(0, 50));
-      setActiveWall(prev => (prev % 9) + 1);
-    }, 2500);
+          if (msg) {
+            const newLog: LogEntry = {
+              ...msg,
+              id: Math.random().toString(36).substring(2, 11),
+              timestamp: new Date().toLocaleTimeString([], { hour12: false })
+            };
+            setLogs(prev => [newLog, ...prev].slice(0, 50));
+            setActiveWall(prev => (prev % 9) + 1);
+          }
+        }, 1800);
+
+      } catch (e) {
+        console.error("Failed to fetch logs dynamically", e);
+      }
+    }
+    
+    fetchLiveDefense();
 
     return () => {
       mountedRef.current = false;
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
     };
   }, []);
 

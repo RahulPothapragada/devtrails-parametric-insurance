@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldAlert, Zap, Activity, Info, Map as MapIcon, Layers, Radio, Crosshair, ChevronRight, AlertCircle } from 'lucide-react';
+import { ShieldAlert, Activity, Info, Map as MapIcon, Layers, Radio, Crosshair, ChevronRight, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -21,9 +21,11 @@ const DefaultIcon = L.icon({
 L.Marker.prototype.options.icon = DefaultIcon;
 
 // Custom Icons for Map
-const riderIcon = (color: string) => L.divIcon({
+const riderIcon = (color: string, isAttack: boolean = false) => L.divIcon({
   className: 'custom-div-icon',
-  html: `<div style="background-color: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px ${color}88;"></div>`,
+  html: `<div style="position: relative; background-color: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px ${color}88;">
+    ${isAttack ? '<div style="position: absolute; top: -16px; left: 6px; font-size: 16px; z-index: 100; filter: drop-shadow(0px 0px 2px rgba(0,0,0,0.8));">⚠️</div>' : ''}
+  </div>`,
   iconSize: [12, 12],
   iconAnchor: [6, 6]
 });
@@ -46,11 +48,11 @@ const CITIES = [
   { id: 'Ahmedabad', name: 'Ahmedabad', lat: 23.0225, lng: 72.5714, tier: 'Tier 2' },
   { id: 'Jaipur', name: 'Jaipur', lat: 26.9124, lng: 75.7873, tier: 'Tier 2' },
   { id: 'Lucknow', name: 'Lucknow', lat: 26.8467, lng: 80.9462, tier: 'Tier 3' },
-  { id: 'Kanpur', name: 'Kanpur', lat: 26.4499, lng: 80.3319, tier: 'Tier 3' },
-  { id: 'Nagpur', name: 'Nagpur', lat: 21.1458, lng: 79.0882, tier: 'Tier 3' },
+  { id: 'Indore', name: 'Indore', lat: 22.7196, lng: 75.8577, tier: 'Tier 3' },
+  { id: 'Patna', name: 'Patna', lat: 25.6093, lng: 85.1376, tier: 'Tier 3' },
+  { id: 'Bhopal', name: 'Bhopal', lat: 23.2599, lng: 77.4126, tier: 'Tier 3' },
 ];
 
-const INITIAL_LINKS: any[] = []; // Links auto-generated or disabled for scale
 
 function MapController({ center }: { center: [number, number] }) {
   const map = useMap();
@@ -66,7 +68,6 @@ function MapController({ center }: { center: [number, number] }) {
 export default function FraudGraphPage() {
   const [activeCity, setActiveCity] = useState(CITIES[0]);
   const [nodes, setNodes] = useState<any[]>([]);
-  const [links] = useState(INITIAL_LINKS);
   const [selectedNode, setSelectedNode] = useState<any>(null);
   const [mapStyle, setMapStyle] = useState<'dark' | 'satellite'>('dark');
   const [showRadius, setShowRadius] = useState(true);
@@ -225,25 +226,7 @@ export default function FraudGraphPage() {
           />
           <MapController center={[activeCity.lat, activeCity.lng]} />
 
-          {/* Links */}
-          {links.map((link, i) => {
-            const start = nodes.find(n => n.id === link.from);
-            const end = nodes.find(n => n.id === link.to);
-            if (!start || !end) return null;
-            const isDanger = (start as any).risk === 'high' || (start as any).risk === 'extreme';
-            return (
-              <Polyline 
-                key={i} 
-                positions={[[start.lat, start.lng], [end.lat, end.lng]]} 
-                pathOptions={{ 
-                  color: isDanger ? '#ef4444' : '#10a37f', 
-                  weight: isDanger ? 3 : 2,
-                  dashArray: isDanger ? '5,10' : undefined,
-                  opacity: 0.6
-                }} 
-              />
-            );
-          })}
+          {/* Links intentionally removed for a cleaner interface */}
 
           {/* Nodes */}
           {nodes.map(node => (
@@ -252,7 +235,8 @@ export default function FraudGraphPage() {
               position={[node.lat, node.lng]}
               icon={node.type === 'tower' ? towerIcon : riderIcon(
                 node.status === 'attack' ? '#ef4444' : 
-                node.status === 'spoofing' ? '#f59e0b' : '#10a37f'
+                node.status === 'spoofing' ? '#f59e0b' : '#10a37f',
+                node.status === 'attack'
               )}
               eventHandlers={{
                 click: () => setSelectedNode(node),
@@ -328,10 +312,11 @@ export default function FraudGraphPage() {
                            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest leading-none mb-1">Safety Verdict</p>
                            <p className={cn(
                               "text-xs font-bold",
-                              selectedNode.risk === 'extreme' ? "text-destructive" : "text-foreground"
+                              selectedNode.risk === 'extreme' ? "text-destructive" : 
+                              selectedNode.risk === 'high' ? "text-amber-500" : "text-foreground"
                            )}>
-                              {selectedNode.risk === 'extreme' ? 'CRITICAL: Multi-Proxy Relay Detected' : 
-                               selectedNode.risk === 'high' ? 'High Risk Location Mismatch' : 'Nominal Signal Pattern'}
+                              {selectedNode.verdict || (selectedNode.risk === 'extreme' ? 'CRITICAL: Multi-Proxy Relay Detected' : 
+                               selectedNode.risk === 'high' ? 'High Risk Location Mismatch' : 'Nominal Signal Pattern')}
                            </p>
                         </div>
                      </div>
