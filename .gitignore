@@ -6,7 +6,12 @@ __pycache__/
 dist/
 build/
 venv/
-# .env is intentionally committed — contains only test/dev values, no production secrets
+# Environment files — never commit .env files (use .env.example instead)
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
 
 # Node
 node_modules/

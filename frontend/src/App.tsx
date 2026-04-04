@@ -152,7 +152,8 @@ function AppContent() {
     let active = true;
     async function fetchLiveWeather() {
       try {
-        const res = await fetch('https://api.openweathermap.org/data/2.5/weather?q=Delhi,IN&appid=4f944055cf514c7d8cc9449bce5ed310');
+        const owmKey = import.meta.env.VITE_OPENWEATHER_API_KEY;
+        const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=Delhi,IN&appid=${owmKey}`);
         if (!res.ok) throw new Error(`Live API Offline or Unauthorized code ${res.status}`);
         
         const data = await res.json();
