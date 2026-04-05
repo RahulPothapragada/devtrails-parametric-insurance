@@ -165,17 +165,17 @@ function AppContent() {
     let active = true;
     async function fetchLiveWeather() {
       try {
-        const owmKey = import.meta.env.VITE_OPENWEATHER_API_KEY;
-        const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=Delhi,IN&appid=${owmKey}`);
-        if (!res.ok) throw new Error(`Live API Offline or Unauthorized code ${res.status}`);
-        
+        // Proxied through backend — API key never exposed to browser
+        const res = await fetch(`${API_BASE}/data/weather?city=Delhi`);
+        if (!res.ok) throw new Error(`Weather proxy offline: ${res.status}`);
+
         const data = await res.json();
         if (!active) return;
 
         let detectedType: WeatherType = 'NORMAL';
-        const main = (data.weather?.[0]?.main || '').toLowerCase();
-        const tempC = (data.main?.temp || 290) - 273.15; // API defaults to Kelvin
-        
+        const main = (data.main || '').toLowerCase();
+        const tempC: number = data.temp_c ?? 28;
+
         if (main.includes('rain') || main.includes('drizzle') || main.includes('thunder')) {
           detectedType = 'RAIN';
         } else if (tempC > 40) {
@@ -183,7 +183,7 @@ function AppContent() {
         } else if (tempC < 10) {
           detectedType = 'COLD';
         }
-        
+
         setWeatherEffect(detectedType);
       } catch (e) {
         console.warn('Weather Feed Disconnected. Running on internal NORMAL conditions.', e);

@@ -320,3 +320,35 @@ async def data_timeline(
             ),
         },
     }
+
+
+# ── Weather proxy ─────────────────────────────────────────────────────────────
+import httpx
+from app.core.config import settings
+
+@router.get("/weather")
+async def get_weather(city: str = "Delhi"):
+    """
+    Proxy OpenWeatherMap so the API key never leaves the server.
+    Frontend calls /api/data/weather?city=Delhi — key stays server-side.
+    Returns: { main, description, temp_c, humidity } or a safe fallback.
+    """
+    key = settings.OPENWEATHER_API_KEY
+    if not key:
+        return {"main": "NORMAL", "description": "API key not configured", "temp_c": 28, "humidity": 60}
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get(
+                "https://api.openweathermap.org/data/2.5/weather",
+                params={"q": f"{city},IN", "appid": key},
+            )
+            r.raise_for_status()
+            d = r.json()
+            return {
+                "main":        d["weather"][0]["main"],
+                "description": d["weather"][0]["description"],
+                "temp_c":      round(d["main"]["temp"] - 273.15, 1),
+                "humidity":    d["main"]["humidity"],
+            }
+    except Exception:
+        return {"main": "NORMAL", "description": "Weather service unavailable", "temp_c": 28, "humidity": 60}
