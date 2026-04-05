@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { AnimatePresence } from 'framer-motion';
-import { Zap, GitBranch, BookOpen, ShieldAlert } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Zap, GitBranch, BookOpen, ShieldAlert, ServerCrash } from 'lucide-react';
+import { API_BASE } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import Landing from './pages/Landing';
 import RiderDashboard from './pages/RiderDashboard';
@@ -145,7 +146,19 @@ function AnimatedRoutes() {
 function AppContent() {
   const location = useLocation();
   const [weatherEffect, setWeatherEffect] = useState<WeatherType>('NORMAL');
+  const [serverWaking, setServerWaking] = useState(false);
   const isLanding = location.pathname === '/' || location.pathname === '/hero-demo';
+  const warmupDone = useRef(false);
+
+  // Warm-up ping — fires immediately on app load so Render wakes before user clicks anything
+  useEffect(() => {
+    if (warmupDone.current) return;
+    warmupDone.current = true;
+    const t = setTimeout(() => setServerWaking(true), 2000); // show banner after 2s if still waiting
+    fetch(`${API_BASE.replace('/api', '')}/health`, { method: 'GET' })
+      .then(() => { clearTimeout(t); setServerWaking(false); })
+      .catch(() => { clearTimeout(t); setServerWaking(false); });
+  }, []);
 
   // Live OpenWeatherMap API Integration
   useEffect(() => {
@@ -190,6 +203,27 @@ function AppContent() {
 
   return (
     <div className="dark min-h-screen bg-background text-foreground flex flex-col relative selection:bg-primary selection:text-primary-foreground font-sans">
+      {/* Server cold-start banner */}
+      <AnimatePresence>
+        {serverWaking && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="fixed top-0 inset-x-0 z-[9999] bg-amber-500/10 border-b border-amber-500/30 backdrop-blur-sm"
+          >
+            <div className="flex items-center justify-center gap-2.5 py-2 text-xs font-bold text-amber-400">
+              <ServerCrash className="w-3.5 h-3.5 animate-pulse" />
+              <span>Backend waking up on Render free tier — data loads in ~20s on first visit</span>
+              <span className="flex gap-0.5">
+                {[0,1,2].map(i => (
+                  <span key={i} className="w-1 h-1 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                ))}
+              </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <div className="relative z-10 flex flex-col min-h-screen w-full">
         {!isLanding && <Navbar currentEffect={weatherEffect} />}
         <main className={cn("flex-1 w-full h-full relative", !isLanding && "pt-16")}>
