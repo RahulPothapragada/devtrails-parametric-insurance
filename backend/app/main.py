@@ -18,16 +18,28 @@ from app.services.triggers.trigger_engine import TriggerEngine
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     # Startup: initialize ML models from the actual seeded database.
-    await ml.async_initialize()
+    try:
+        await ml.async_initialize()
+        print("✅ ML models initialized")
+    except Exception as e:
+        print(f"⚠️  ML initialization skipped: {e}")
 
     # Startup: Initialize trigger monitoring engine
-    trigger_engine = TriggerEngine()
-    trigger_engine.start()
-    print("🛡️  FlowSecure Trigger Engine started — monitoring 6 parametric triggers")
+    try:
+        trigger_engine = TriggerEngine()
+        trigger_engine.start()
+        print("🛡️  FlowSecure Trigger Engine started — monitoring 6 parametric triggers")
+    except Exception as e:
+        print(f"⚠️  Trigger Engine skipped: {e}")
+        trigger_engine = None
     yield
     # Shutdown
-    trigger_engine.stop()
-    print("🛡️  FlowSecure Trigger Engine stopped")
+    if trigger_engine:
+        try:
+            trigger_engine.stop()
+        except Exception:
+            pass
+    print("🛡️  FlowSecure shutdown complete")
 
 
 app = FastAPI(
