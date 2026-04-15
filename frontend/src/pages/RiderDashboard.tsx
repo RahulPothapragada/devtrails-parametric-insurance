@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   IndianRupee, CloudRain, Clock, ShieldCheck, ChevronRight,
@@ -181,6 +181,7 @@ export default function RiderDashboard() {
   const [otpStep, setOtpStep] = useState<'phone' | 'otp'>('phone');
   const [otpPhone, setOtpPhone] = useState('');
   const [otpCode, setOtpCode] = useState('');
+  const phoneInputRef = useRef<HTMLInputElement>(null);
   const [demoOtp, setDemoOtp] = useState<string | null>(null);
 
   const [rzpConfig, setRzpConfig] = useState<RzpConfig | null>(null);
@@ -238,12 +239,14 @@ export default function RiderDashboard() {
   };
 
   const handleSendOtp = async () => {
-    if (!/^\d{10}$/.test(otpPhone)) { setLoginError('Enter a valid 10-digit phone number'); return; }
+    const phone = phoneInputRef.current?.value.replace(/\D/g, '') || otpPhone;
+    setOtpPhone(phone);
+    if (!/^\d{10}$/.test(phone)) { setLoginError('Enter a valid 10-digit phone number'); return; }
     setLoginLoading(true); setLoginError(''); setDemoOtp(null);
     try {
       const res = await fetch(`${API}/auth/send-otp`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: otpPhone }),
+        body: JSON.stringify({ phone }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
@@ -597,14 +600,20 @@ export default function RiderDashboard() {
                   <div className="flex items-center gap-2 border border-[#E5E5EA] rounded-xl px-4 py-3 bg-white focus-within:border-[#0071E3] transition-colors">
                     <span className="text-[#86868B] font-medium text-sm">+91</span>
                     <input
+                      ref={phoneInputRef}
                       type="text"
                       inputMode="numeric"
                       pattern="[0-9]*"
                       maxLength={10}
                       placeholder="10-digit phone number"
-                      value={otpPhone}
-                      onChange={e => { setOtpPhone(e.target.value.replace(/\D/g, '').slice(0, 10)); setLoginError(''); }}
-                      onKeyDown={e => e.key === 'Enter' && handleSendOtp()}
+                      defaultValue=""
+                      onKeyDown={e => { if (e.key === 'Enter') handleSendOtp(); }}
+                      onInput={e => {
+                        const el = e.currentTarget;
+                        const clean = el.value.replace(/\D/g, '').slice(0, 10);
+                        if (el.value !== clean) el.value = clean;
+                        if (loginError) setLoginError('');
+                      }}
                       className="flex-1 outline-none text-sm font-medium bg-transparent"
                     />
                   </div>
@@ -642,7 +651,7 @@ export default function RiderDashboard() {
                     Verify & Login
                   </button>
                   <button
-                    onClick={() => { setOtpStep('phone'); setOtpCode(''); setLoginError(''); setDemoOtp(null); }}
+                    onClick={() => { setOtpStep('phone'); setOtpCode(''); setOtpPhone(''); setLoginError(''); setDemoOtp(null); if (phoneInputRef.current) phoneInputRef.current.value = ''; }}
                     className="text-[#86868B] text-sm text-center hover:text-[#1D1D1F] transition-colors"
                   >
                     ← Change number
