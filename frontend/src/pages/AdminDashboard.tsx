@@ -54,12 +54,13 @@ function fmt(n: number) {
 
 // ── Sidebar ──
 const NAV_ITEMS = [
-  { icon: LayoutDashboard, label: 'Dashboard', to: '/admin', active: false },
-  { icon: ShieldCheck,     label: 'Policies',    to: '#',     active: true  },
-  { icon: BarChart2,       label: 'Underwriting',to: '#',     active: false },
-  { icon: LineChart,       label: 'Analytics',   to: '/actuarial', active: false },
-  { icon: FileTextIcon,    label: 'Documents',   to: '#',     active: false },
-  { icon: Settings,        label: 'Settings',    to: '#',     active: false },
+  { icon: LayoutDashboard, label: 'Dashboard',    to: '/admin',     active: false },
+  { icon: ShieldCheck,     label: 'Policies',     to: '#',          active: true  },
+  { icon: BarChart2,       label: 'Underwriting', to: '#',          active: false },
+  { icon: LineChart,       label: 'Analytics',    to: '/actuarial', active: false },
+  { icon: AlertTriangle,   label: 'Fraud Defense',to: '/fraud',     active: false },
+  { icon: FileTextIcon,    label: 'Documents',    to: '#',          active: false },
+  { icon: Settings,        label: 'Settings',     to: '#',          active: false },
 ];
 
 function Sidebar() {

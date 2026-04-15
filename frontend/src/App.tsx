@@ -189,7 +189,6 @@ function Navbar({ currentEffect }: { currentEffect: WeatherType }) {
           {[
             { to: '/simulate', label: 'Simulate' },
             { to: '/graph', label: 'Graph' },
-            { to: '/fraud', label: 'Defense' },
           ].map((link) => (
             <Link key={link.to} to={link.to} className={cn("opacity-70 hover:opacity-100 transition-opacity", location.pathname === link.to && "text-[#0071E3] opacity-100")}>
               {link.label}
