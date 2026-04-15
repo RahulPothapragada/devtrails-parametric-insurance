@@ -748,9 +748,10 @@ export default function RiderDashboard() {
                       <RechartsTooltip
                         cursor={{ fill: '#F1F5F9' }}
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                        formatter={(value: number, name: string, props: any) => {
-                          if (value === 0 && name === 'Gig Earnings') return ['Day off', name];
-                          return [`₹${value.toLocaleString('en-IN')}`, name];
+                        formatter={(value, name) => {
+                          const v = Number(value);
+                          if (v === 0 && name === 'Gig Earnings') return ['Day off', name];
+                          return [`₹${v.toLocaleString('en-IN')}`, name as string];
                         }}
                       />
                       <Bar dataKey="earnings" name="Gig Earnings" fill="#1D1D1F" radius={[4, 4, 0, 0]} stackId="a" />

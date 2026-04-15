@@ -25,9 +25,11 @@ interface RiderData {
 type StepStatus = 'pending' | 'running' | 'success' | 'failed';
 interface FlowStep { label: string; status: StepStatus; detail?: string }
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   const t = localStorage.getItem('flowsecure_token');
-  return t ? { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (t) headers['Authorization'] = `Bearer ${t}`;
+  return headers;
 }
 
 const PAYOUT_CACHE_KEY = 'fs_payout_v1';
