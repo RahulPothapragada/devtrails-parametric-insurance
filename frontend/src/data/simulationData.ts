@@ -23,8 +23,6 @@ export interface Scenario {
   borderColor: string;
   triggerType: string;
   location: string;
-  cityId: string;           // maps to CITIES[].id in FraudGraphPage
-  weatherType: 'rain' | 'heatwave' | 'bandh' | 'attack';
   triggerValue: string;
   totalClaims: number;
   genuineRiders: number;
@@ -44,8 +42,6 @@ const mumbaiMonsoon: Scenario = {
   borderColor: 'border-blue-500/30',
   triggerType: 'Heavy Rainfall',
   location: 'Andheri West, Mumbai',
-  cityId: 'Mumbai',
-  weatherType: 'rain',
   triggerValue: '89mm/day (threshold: 64.5mm)',
   totalClaims: 500,
   genuineRiders: 227,
@@ -68,7 +64,7 @@ const mumbaiMonsoon: Scenario = {
     { id: 'm13', timestamp: 'T+12s', phase: 'fraud_wall', title: 'Wall 6: Temporal Patterns', description: '201 held riders show 95%+ claim rate (zone avg: 35%). Login-trigger correlation: 0.97.', status: 'danger', wallNumber: 6 },
     { id: 'm14', timestamp: 'T+13s', phase: 'fraud_wall', title: 'Wall 7: Multi-Source Verification', description: '165 riders connected to cell towers in completely different areas. GPS vs tower mismatch confirmed.', status: 'danger', wallNumber: 7 },
     { id: 'm15', timestamp: 'T+15s', phase: 'result', title: 'VERDICT COMPLETE', description: '227 genuine riders approved. 261 fraudulent claims blocked. 12 edge cases held for 24hr review.', status: 'info' },
-    { id: 'm16', timestamp: 'T+16s', phase: 'payout', title: '💰 PAYOUTS INITIATED', description: '₹10,215 disbursed to 227 riders via UPI. Average payout: ₹45. Fraud savings: ₹1,04,400.', status: 'success' },
+    { id: 'm16', timestamp: 'T+16s', phase: 'payout', title: '💰 PAYOUTS INITIATED', description: '₹86,260 disbursed to 227 riders via UPI. Average payout: ₹380. Fraud savings: ₹1,04,400.', status: 'success' },
   ],
 };
 
@@ -82,8 +78,6 @@ const delhiHeatwave: Scenario = {
   borderColor: 'border-orange-500/30',
   triggerType: 'Extreme Heat',
   location: 'Anand Vihar, Delhi NCR',
-  cityId: 'Delhi',
-  weatherType: 'heatwave',
   triggerValue: '47°C (threshold: 40°C)',
   totalClaims: 320,
   genuineRiders: 285,
@@ -102,7 +96,7 @@ const delhiHeatwave: Scenario = {
     { id: 'd9', timestamp: 'T+8s', phase: 'fraud_wall', title: 'Wall 5: Graph Network', description: 'No fraud rings detected. Isolated suspicious accounts only.', status: 'success', wallNumber: 5 },
     { id: 'd10', timestamp: 'T+9s', phase: 'fraud_wall', title: 'Wall 6: Temporal Patterns', description: '7 riders claiming for first time despite being registered 3+ months. Unusual onboarding-to-claim gap.', status: 'warning', wallNumber: 6 },
     { id: 'd11', timestamp: 'T+11s', phase: 'result', title: 'VERDICT COMPLETE', description: '285 genuine riders approved. 28 fraudulent blocked. 7 edge cases held for review.', status: 'info' },
-    { id: 'd12', timestamp: 'T+12s', phase: 'payout', title: '💰 PAYOUTS INITIATED', description: '₹8,550 disbursed to 285 riders. Average payout: ₹30. Fraud savings: ₹14,280.', status: 'success' },
+    { id: 'd12', timestamp: 'T+12s', phase: 'payout', title: '💰 PAYOUTS INITIATED', description: '₹1,45,350 disbursed to 285 riders. Average payout: ₹510. Fraud savings: ₹14,280.', status: 'success' },
   ],
 };
 
@@ -116,8 +110,6 @@ const bengaluruBandh: Scenario = {
   borderColor: 'border-red-500/30',
   triggerType: 'Social Disruption',
   location: 'Bengaluru (City-Wide)',
-  cityId: 'Bangalore',
-  weatherType: 'bandh',
   triggerValue: 'Official Bandh Declaration',
   totalClaims: 180,
   genuineRiders: 165,
@@ -135,7 +127,7 @@ const bengaluruBandh: Scenario = {
     { id: 'b8', timestamp: 'T+7s', phase: 'fraud_wall', title: 'Wall 4: Crowd Oracle', description: 'City-wide shutdown: 95% of all Bengaluru riders stopped. Zone-level validation bypassed.', status: 'success', wallNumber: 4 },
     { id: 'b9', timestamp: 'T+8s', phase: 'fraud_wall', title: 'Wall 5: Graph Network', description: '8 accounts linked to known dormant cluster from previous bandh event. Previously flagged.', status: 'danger', wallNumber: 5 },
     { id: 'b10', timestamp: 'T+10s', phase: 'result', title: 'VERDICT COMPLETE', description: '165 genuine riders approved. 8 previously-flagged accounts blocked. 7 new riders held for review.', status: 'info' },
-    { id: 'b11', timestamp: 'T+11s', phase: 'payout', title: '💰 PAYOUTS INITIATED', description: '₹4,125 disbursed to 165 riders. Average payout: ₹25. Clean event, minimal fraud.', status: 'success' },
+    { id: 'b11', timestamp: 'T+11s', phase: 'payout', title: '💰 PAYOUTS INITIATED', description: '₹69,300 disbursed to 165 riders. Average payout: ₹420. Clean event, minimal fraud.', status: 'success' },
   ],
 };
 
@@ -149,8 +141,6 @@ const spoofingAttack: Scenario = {
   borderColor: 'border-red-600/40',
   triggerType: 'Adversarial Attack',
   location: 'Andheri West, Mumbai',
-  cityId: 'Mumbai',
-  weatherType: 'attack',
   triggerValue: 'GPS Spoofing + Fake Accounts',
   totalClaims: 500,
   genuineRiders: 227,
@@ -169,7 +159,7 @@ const spoofingAttack: Scenario = {
     { id: 'a9', timestamp: 'T+11s', phase: 'fraud_wall', title: 'Wall 6: Temporal Patterns', description: 'Behavioral analysis: 201 accounts claim on 95% of events (zone avg: 35%). Login only within 15 min of triggers.', status: 'danger', wallNumber: 6 },
     { id: 'a10', timestamp: 'T+12s', phase: 'fraud_wall', title: 'Wall 7: Motion & Cell Tower', description: 'GPS shows movement across Andheri, but accelerometer reads 0.00 m/s². Cell towers confirm Thane, not Andheri.', status: 'danger', wallNumber: 7 },
     { id: 'a11', timestamp: 'T+14s', phase: 'result', title: '🛡️ ATTACK NEUTRALIZED', description: '261 fraud ring members FROZEN. 12 edge cases held for manual review. 227 genuine riders unaffected.', status: 'info' },
-    { id: 'a12', timestamp: 'T+15s', phase: 'payout', title: '💰 GENUINE RIDERS PAID', description: '₹10,215 paid to 227 genuine riders in under 30 seconds. ₹1,09,200 in fraud BLOCKED. ₹0 lost to attackers.', status: 'success' },
+    { id: 'a12', timestamp: 'T+15s', phase: 'payout', title: '💰 GENUINE RIDERS PAID', description: '₹86,260 paid to 227 genuine riders in under 30 seconds. ₹1,09,200 in fraud BLOCKED. ₹0 lost to attackers.', status: 'success' },
   ],
 };
 
@@ -381,14 +371,14 @@ export const STORY_DAYS: StoryDay[] = [
     subtitle: '89mm rainfall — parametric insurance activates',
     type: 'danger',
     icon: '⛈️',
-    earnings: { withFlowSecure: 45, withoutFlowSecure: 0 },
+    earnings: { withFlowSecure: 380, withoutFlowSecure: 0 },
     details: {
       shifts: 'Cannot work — city-wide flooding',
       weather: '25°C, 89mm rainfall, Visibility 150m',
       triggerFired: true,
-      payoutAmount: 45,
+      payoutAmount: 380,
     },
-    narrative: 'Thursday is catastrophic. 89mm of rain in 6 hours. BMC issues waterlogging alerts. Dark Store #47 pauses dispatch. All riders sent home. Without FlowSecure — Ravi earns ₹0. He sits at home, watching the rain, losing a full day of income. With FlowSecure — the parametric rainfall trigger fires automatically. 4/4 data sources confirm the event. The 7-wall fraud engine clears Ravi in under 3 seconds (he had 3+ hours of verified activity this week). ₹45 lands in his UPI account within 2 minutes. No forms. No calls. It\'s not his full day\'s earnings — but it\'s the safety net that keeps him from falling behind on rent.',
+    narrative: 'Thursday is catastrophic. 89mm of rain in 6 hours. BMC issues waterlogging alerts. Dark Store #47 pauses dispatch. All riders sent home. Without FlowSecure — Ravi earns ₹0. He sits at home, watching the rain, losing a full day of income. With FlowSecure — the parametric trigger fires automatically. 4/4 data sources confirm the event. The 7-wall fraud engine clears Ravi in under 3 seconds (he had 3+ hours of verified activity this week). ₹380 lands in his UPI account within 2 minutes. No forms. No calls.',
   },
   {
     day: 'Friday',

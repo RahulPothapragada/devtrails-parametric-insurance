@@ -13,7 +13,7 @@ For demo / sandbox mode it simulates realistic delays and success/failure rates.
 
 import random
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -41,6 +41,25 @@ FAILURE_REASONS = [
     "Invalid VPA (Virtual Payment Address)",
     "Beneficiary bank timeout",
 ]
+
+# UPI handle → IFSC prefix mapping for IMPS fallback
+_UPI_BANK_MAP = {
+    "oksbi":        {"bank": "State Bank of India",   "ifsc_prefix": "SBIN"},
+    "okaxis":       {"bank": "Axis Bank",              "ifsc_prefix": "UTIB"},
+    "okhdfcbank":   {"bank": "HDFC Bank",              "ifsc_prefix": "HDFC"},
+    "okicici":      {"bank": "ICICI Bank",             "ifsc_prefix": "ICIC"},
+    "ybl":          {"bank": "Yes Bank / PhonePe",     "ifsc_prefix": "YESB"},
+    "paytm":        {"bank": "Paytm Payments Bank",   "ifsc_prefix": "PYTM"},
+    "ibl":          {"bank": "IndusInd Bank",          "ifsc_prefix": "INDB"},
+    "upi":          {"bank": "NPCI",                   "ifsc_prefix": "NPCI"},
+}
+
+def _upi_bank_info(upi_id: str) -> dict:
+    """Derive bank name and IFSC prefix from UPI handle."""
+    if upi_id and "@" in upi_id:
+        handle = upi_id.split("@")[-1].lower()
+        return _UPI_BANK_MAP.get(handle, {"bank": "Bank", "ifsc_prefix": "MISC"})
+    return {"bank": "Unknown", "ifsc_prefix": "MISC"}
 
 
 def _select_channel(rider: Rider) -> PayoutChannel:
@@ -89,7 +108,7 @@ async def initiate_payout(claim_id: int, db: AsyncSession) -> dict:
     channel = _select_channel(rider) if rider else PayoutChannel.IMPS
 
     ref = _generate_ref(channel)
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
 
     claim.payout_status = PayoutStatus.INITIATED
     claim.payout_channel = channel
@@ -98,6 +117,7 @@ async def initiate_payout(claim_id: int, db: AsyncSession) -> dict:
     claim.payout_failure_reason = None
     await db.flush()
 
+    bank_info = _upi_bank_info(rider.upi_id) if rider else {}
     return {
         "success": True,
         "claim_id": claim_id,
@@ -105,6 +125,7 @@ async def initiate_payout(claim_id: int, db: AsyncSession) -> dict:
         "channel": channel.value,
         "amount": claim.payout_amount,
         "upi_id": rider.upi_id if rider and channel == PayoutChannel.UPI else None,
+        "bank": bank_info.get("bank"),
         "payout_status": "initiated",
         "message": f"Payout of ₹{claim.payout_amount:.2f} initiated via {channel.value.upper()}",
         "expected_time": CHANNEL_PROCESSING_TIME[channel],
@@ -139,7 +160,7 @@ async def confirm_payout(claim_id: int, db: AsyncSession) -> dict:
 
     channel = claim.payout_channel or PayoutChannel.UPI
     success_rate = CHANNEL_SUCCESS_RATE.get(channel, 0.95)
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
 
     if random.random() < success_rate:
         # SUCCESS
@@ -234,6 +255,108 @@ async def payout_status_check(claim_id: int, db: AsyncSession) -> dict:
     }
 
 
+async def auto_disburse_claim(claim_id: int, db: AsyncSession) -> dict:
+    """
+    Fully automatic parametric payout for a single claim.
+    Called immediately when a claim is AUTO_APPROVED — no rider action required.
+    Tries UPI first; falls back to IMPS on failure.
+    Returns a transaction record suitable for logging/audit.
+    """
+    result = await db.execute(select(Claim).where(Claim.id == claim_id))
+    claim = result.scalar_one_or_none()
+    if not claim:
+        return {"success": False, "error": "Claim not found"}
+
+    rider_result = await db.execute(select(Rider).where(Rider.id == claim.rider_id))
+    rider = rider_result.scalar_one_or_none()
+    if not rider:
+        return {"success": False, "error": "Rider not found"}
+
+    bank_info = _upi_bank_info(rider.upi_id or "")
+
+    # ── Attempt 1: Primary channel (UPI preferred) ──
+    primary_channel = _select_channel(rider)
+    ref1 = _generate_ref(primary_channel)
+    now = datetime.utcnow()
+
+    claim.payout_status = PayoutStatus.INITIATED
+    claim.payout_channel = primary_channel
+    claim.payout_ref = ref1
+    claim.payout_initiated_at = now
+    claim.payout_failure_reason = None
+    await db.flush()
+
+    attempt1_success = random.random() < CHANNEL_SUCCESS_RATE.get(primary_channel, 0.95)
+
+    if attempt1_success:
+        claim.payout_status = PayoutStatus.CONFIRMED
+        claim.payout_confirmed_at = datetime.utcnow()
+        claim.status = ClaimStatus.PAID
+        claim.paid_at = claim.payout_confirmed_at
+        await db.flush()
+        return {
+            "success": True,
+            "channel": primary_channel.value,
+            "ref": ref1,
+            "upi_id": rider.upi_id,
+            "bank": bank_info.get("bank"),
+            "amount": claim.payout_amount,
+            "attempts": 1,
+            "message": f"₹{claim.payout_amount:.0f} auto-credited to {rider.upi_id} via UPI",
+        }
+
+    # ── UPI failed → rollback + IMPS retry ──
+    reason1 = random.choice(FAILURE_REASONS)
+    claim.payout_status = PayoutStatus.ROLLED_BACK
+    claim.status = ClaimStatus.APPROVED
+    claim.payout_failure_reason = reason1
+    await db.flush()
+
+    fallback_channel = PayoutChannel.IMPS
+    ref2 = _generate_ref(fallback_channel)
+    claim.payout_status = PayoutStatus.INITIATED
+    claim.payout_channel = fallback_channel
+    claim.payout_ref = ref2
+    claim.payout_initiated_at = datetime.utcnow()
+    claim.payout_failure_reason = None
+    await db.flush()
+
+    attempt2_success = random.random() < 0.98  # IMPS retry has boosted success rate
+
+    if attempt2_success:
+        claim.payout_status = PayoutStatus.CONFIRMED
+        claim.payout_confirmed_at = datetime.utcnow()
+        claim.status = ClaimStatus.PAID
+        claim.paid_at = claim.payout_confirmed_at
+        await db.flush()
+        return {
+            "success": True,
+            "channel": "imps",
+            "ref": ref2,
+            "upi_id": rider.upi_id,
+            "bank": bank_info.get("bank"),
+            "amount": claim.payout_amount,
+            "attempts": 2,
+            "upi_failure_reason": reason1,
+            "message": f"₹{claim.payout_amount:.0f} auto-credited via IMPS (UPI retry) to {bank_info.get('bank')}",
+        }
+
+    # ── Both failed ──
+    reason2 = random.choice(FAILURE_REASONS)
+    claim.payout_status = PayoutStatus.FAILED
+    claim.payout_failure_reason = f"UPI: {reason1} | IMPS: {reason2}"
+    await db.flush()
+    return {
+        "success": False,
+        "channel": "failed",
+        "amount": claim.payout_amount,
+        "attempts": 2,
+        "upi_failure_reason": reason1,
+        "imps_failure_reason": reason2,
+        "message": "Both UPI and IMPS failed — support notified for manual transfer",
+    }
+
+
 async def auto_payout_all(db: AsyncSession) -> dict:
     """
     Instant Auto-Disburse: processes ALL approved/auto_approved unpaid claims
@@ -284,7 +407,7 @@ async def auto_payout_all(db: AsyncSession) -> dict:
         # ── Attempt 1: Primary channel (UPI preferred) ──
         primary_channel = _select_channel(rider)
         ref1 = _generate_ref(primary_channel)
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
 
         claim.payout_status = PayoutStatus.INITIATED
         claim.payout_channel = primary_channel
@@ -307,7 +430,7 @@ async def auto_payout_all(db: AsyncSession) -> dict:
         if attempt1_success:
             # Confirm immediately
             claim.payout_status = PayoutStatus.CONFIRMED
-            claim.payout_confirmed_at = datetime.now(timezone.utc)
+            claim.payout_confirmed_at = datetime.utcnow()
             claim.status = ClaimStatus.PAID
             claim.paid_at = claim.payout_confirmed_at
             await db.flush()
@@ -343,7 +466,7 @@ async def auto_payout_all(db: AsyncSession) -> dict:
             claim.payout_status = PayoutStatus.INITIATED
             claim.payout_channel = fallback_channel
             claim.payout_ref = ref2
-            claim.payout_initiated_at = datetime.now(timezone.utc)
+            claim.payout_initiated_at = datetime.utcnow()
             claim.payout_failure_reason = None
             await db.flush()
 
@@ -361,7 +484,7 @@ async def auto_payout_all(db: AsyncSession) -> dict:
 
             if retry_success:
                 claim.payout_status = PayoutStatus.CONFIRMED
-                claim.payout_confirmed_at = datetime.now(timezone.utc)
+                claim.payout_confirmed_at = datetime.utcnow()
                 claim.status = ClaimStatus.PAID
                 claim.paid_at = claim.payout_confirmed_at
                 await db.flush()

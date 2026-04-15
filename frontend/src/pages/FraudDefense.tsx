@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
+import { API_BASE } from '@/lib/api';
 import { motion } from 'framer-motion';
 import { ShieldAlert, Activity, Smartphone, Wifi, Users, GitBranch, Clock, MapPin, Database, Binary, ShieldCheck } from 'lucide-react';
-import { API_BASE } from '@/lib/api';
 
 const wallIcons: Record<number, React.ReactNode> = {
   1: <Binary className="w-4 h-4" />,

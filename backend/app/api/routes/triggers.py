@@ -1,6 +1,6 @@
 """Trigger routes — live readings, active alerts, zone status, simulate, predict, optimize, stress."""
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from pydantic import BaseModel
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,15 +13,16 @@ from app.models.models import TriggerReading, City, Zone, Rider, TriggerType, We
 from app.schemas.schemas import TriggerReadingOut
 from app.services.mock_external import set_disruption, clear_disruptions, _active_disruptions
 from app.services.claims.claim_generator import generate_claims_for_trigger
+from app.services.triggers.trigger_engine import get_trigger_thresholds
 
 router = APIRouter()
 
 # ── Trigger thresholds for simulation ──
 TRIGGER_DEFAULTS = {
-    "rainfall": (64.5, 120.0),
-    "heat": (40.0, 44.0),
+    "rainfall": (65.0, 120.0),
+    "heat": (44.0, 50.0),
     "cold_fog": (500.0, 200.0),
-    "aqi": (200.0, 350.0),
+    "aqi": (500.0, 700.0),
     "traffic": (10.0, 5.0),
     "social": (0.5, 1.0),
 }
@@ -68,7 +69,7 @@ async def simulate_trigger(request: TriggerSimulateRequest, db: AsyncSession = D
         duration_hours=request.duration_hours or 3.0,
         source="simulation",
         raw_data={"simulated": True, "trigger_type": trigger_type, "value": value},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.utcnow(),
     )
     db.add(trigger_reading)
     await db.flush()
@@ -96,6 +97,8 @@ async def run_trigger_check(db: AsyncSession = Depends(get_db)):
     """Manually trigger checks across all zones using mock external APIs."""
     from app.services import mock_external
 
+    current_month = datetime.utcnow().month
+    thresholds = get_trigger_thresholds(current_month)
     zones_result = await db.execute(select(Zone))
     zones = zones_result.scalars().all()
 
@@ -103,13 +106,14 @@ async def run_trigger_check(db: AsyncSession = Depends(get_db)):
     for zone in zones:
         # Check weather
         weather = mock_external.get_weather(zone.id, zone.name)
-        if weather["rainfall_mm"] >= 64.5:
+        rainfall_threshold = thresholds["rainfall"]["level_1"]
+        if weather["rainfall_mm"] >= rainfall_threshold:
             tr = TriggerReading(
                 city_id=zone.city_id, zone_id=zone.id,
                 trigger_type=TriggerType.RAINFALL,
-                value=weather["rainfall_mm"], threshold=64.5,
+                value=weather["rainfall_mm"], threshold=rainfall_threshold,
                 is_breached=True, source="mock_openweathermap",
-                raw_data=weather, timestamp=datetime.now(timezone.utc),
+                raw_data=weather, timestamp=datetime.utcnow(),
             )
             db.add(tr)
             await db.flush()
@@ -118,18 +122,34 @@ async def run_trigger_check(db: AsyncSession = Depends(get_db)):
 
         # Check AQI
         aqi = mock_external.get_aqi(zone.id, zone.name)
-        if aqi["aqi_value"] >= 200:
+        aqi_threshold = thresholds["aqi"]["level_1"]
+        if aqi["aqi_value"] >= aqi_threshold:
             tr = TriggerReading(
                 city_id=zone.city_id, zone_id=zone.id,
                 trigger_type=TriggerType.AQI,
-                value=aqi["aqi_value"], threshold=200,
+                value=aqi["aqi_value"], threshold=aqi_threshold,
                 is_breached=True, source="mock_cpcb_waqi",
-                raw_data=aqi, timestamp=datetime.now(timezone.utc),
+                raw_data=aqi, timestamp=datetime.utcnow(),
             )
             db.add(tr)
             await db.flush()
             claims = await generate_claims_for_trigger(db, tr)
             all_results.append({"zone": zone.name, "trigger": "aqi", "value": aqi["aqi_value"], "claims": claims["claims_generated"]})
+
+        # Check cold fog — lower visibility = worse, so use <= (opposite of rainfall/heat/AQI)
+        fog_threshold = thresholds["cold_fog"]["level_1"]  # 500m = mild fog entry point
+        if weather["visibility_m"] <= fog_threshold:
+            tr = TriggerReading(
+                city_id=zone.city_id, zone_id=zone.id,
+                trigger_type=TriggerType.COLD_FOG,
+                value=weather["visibility_m"], threshold=fog_threshold,
+                is_breached=True, source="mock_openweathermap",
+                raw_data=weather, timestamp=datetime.utcnow(),
+            )
+            db.add(tr)
+            await db.flush()
+            claims = await generate_claims_for_trigger(db, tr)
+            all_results.append({"zone": zone.name, "trigger": "cold_fog", "value": weather["visibility_m"], "claims": claims["claims_generated"]})
 
     return {"message": f"Checked {len(zones)} zones", "triggers_fired": len(all_results), "results": all_results}
 
@@ -147,6 +167,7 @@ async def demo_disaster(rider_id: int, db: AsyncSession = Depends(get_db)):
     Bypasses the fraud engine entirely to avoid SQLite locking.
     """
     from app.models.models import Claim, ClaimStatus, PayoutStatus
+    from app.services.pricing.pricing_engine import premium_to_weekly_cap
 
     rider_result = await db.execute(select(Rider).where(Rider.id == rider_id))
     rider = rider_result.scalar_one_or_none()
@@ -164,7 +185,7 @@ async def demo_disaster(rider_id: int, db: AsyncSession = Depends(get_db)):
     if not policy:
         raise HTTPException(status_code=400, detail="No active policy for this rider")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
 
     # Clean up past demo claims to prevent the payout from stacking on multiple clicks
     past_demo_claims_result = await db.execute(
@@ -183,7 +204,7 @@ async def demo_disaster(rider_id: int, db: AsyncSession = Depends(get_db)):
         zone_id=rider.zone_id,
         trigger_type=TriggerType.RAINFALL,
         value=85.0,
-        threshold=64.5,
+        threshold=65.0,
         is_breached=True,
         duration_hours=3.0,
         source="demo_trigger",
@@ -193,35 +214,43 @@ async def demo_disaster(rider_id: int, db: AsyncSession = Depends(get_db)):
     db.add(trigger_reading)
     await db.flush()
 
-    # Determine payout and cap it at 200 as requested
-    payout_amount = 200.0
+    # Determine payout from the rider's weekly premium tier.
+    payout_amount = premium_to_weekly_cap(policy.premium_amount)
 
-    # Directly create an auto-approved claim — no fraud engine needed for demo
+    # Create claim as AUTO_APPROVED + NOT_INITIATED so the payout flow can run
     claim = Claim(
         rider_id=rider_id,
         policy_id=policy.id,
         trigger_reading_id=trigger_reading.id,
         trigger_type=TriggerType.RAINFALL,
         trigger_value=85.0,
-        trigger_threshold=64.5,
+        trigger_threshold=65.0,
         payout_amount=payout_amount,
         hours_lost=3.0,
         hourly_rate_used=rider.avg_hourly_rate or 90.0,
-        payout_status=PayoutStatus.CONFIRMED,
-        status=ClaimStatus.PAID,
+        payout_status=PayoutStatus.NOT_INITIATED,
+        status=ClaimStatus.AUTO_APPROVED,
         fraud_score=5.0,
         fraud_walls_passed={"walls_passed": 7, "walls_failed": 0, "classification": "trusted"},
         event_time=now,
-        paid_at=now,
     )
     db.add(claim)
+    await db.flush()
+    claim_id = claim.id
+
+    # ── Parametric auto-payout: no rider action needed ──
+    from app.services.payout.payout_service import auto_disburse_claim
+    payout_result = await auto_disburse_claim(claim_id, db)
     await db.commit()
 
     return {
         "message": f"Rainfall simulated in {zone.name}",
         "payout_generated": True,
         "payout_amount": payout_amount,
+        "claim_id": claim_id,
         "claims_count": 1,
+        "upi_id": rider.upi_id,
+        "auto_payout": payout_result,
     }
 
 
@@ -288,62 +317,89 @@ async def predict_zone_risk(zone_id: int, db: AsyncSession = Depends(get_db)):
     if not zone:
         return {"error": "Zone not found"}
 
-    # Dynamic risk days based on zone scores
-    highest_risk = "None"
-    risk_type = "None"
-    max_score = 0
-    for name, score in [("flood", zone.flood_risk_score), ("heat", zone.heat_risk_score), 
-                        ("aqi", zone.aqi_risk_score), ("traffic", zone.traffic_risk_score)]:
-        if score > max_score:
-            max_score = score
-            risk_type = name
+    # Resolve city name for AQI lookup
+    city_result = await db.execute(select(City).where(City.id == zone.city_id))
+    city = city_result.scalar_one_or_none()
+    city_name = city.name if city else "Mumbai"
 
-    if max_score > 70:
-        highest_risk = "High"
-    elif max_score > 40:
-        highest_risk = "Medium"
-    else:
-        highest_risk = "Low"
+    from app.services.triggers.weather_service import WeatherService
+    from app.services.triggers.aqi_service import AQIService
+    from app.services.triggers.trigger_engine import get_trigger_thresholds
 
-    messages = {
-        "flood": "Heavy rain expected 2-8 PM.",
-        "heat": "Extreme heat > 42°C in afternoon.",
-        "aqi": "Severe AQI in the morning.",
-        "traffic": "Major traffic disruptions expected."
-    }
-    
-    now = datetime.now(timezone.utc)
+    weather_svc = WeatherService()
+    aqi_svc = AQIService()
+
+    # Fetch real 5-day forecast + current AQI in parallel
+    import asyncio
+    forecast_task = weather_svc.get_forecast_7day(zone.lat, zone.lng)
+    aqi_task = aqi_svc.get_current(city_name)
+    forecast, aqi_data = await asyncio.gather(forecast_task, aqi_task)
+
+    current_aqi = aqi_data.get("aqi", 100)
+    thresholds = get_trigger_thresholds(datetime.utcnow().month)
+
+    now = datetime.utcnow()
     days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    today_idx = now.weekday()
-    
-    base_messages = [
-        "Normal operations expected.", 
-        "Conditions normalising.", 
-        "Clear skies, moderate traffic.", 
-        "Weekend — reduced traffic.", 
-        "Weekend — normal operations.", 
-        "Clear.", 
-        "Conditions normalising."
-    ]
 
     predictions = []
-    for i in range(7):
-        day_idx = (today_idx + i) % 7
-        day_name = days_of_week[day_idx]
-        
-        if i == 0:
-            predictions.append({"day": "Today", "risk": "Medium" if highest_risk == "High" else "Low", "message": "Weather shifting."})
-        elif i == 1:
-            predictions.append({"day": "Tomorrow", "risk": highest_risk, "message": messages.get(risk_type, "Residual issues.") if highest_risk != "Low" else "Clear skies."})
-        elif i == 2:
-            predictions.append({"day": day_name, "risk": "Medium" if highest_risk == "High" else "Low", "message": "Residual impact." if highest_risk == "High" else "Clear."})
-        else:
-            predictions.append({"day": day_name, "risk": "Low", "message": base_messages[i % len(base_messages)]})
+    for i, day_data in enumerate(forecast[:7]):
+        rainfall = day_data.get("rainfall_mm", 0.0)
+        temp_max = day_data.get("temp_max", 32.0)
+        conditions = day_data.get("conditions", "Clear")
+        if isinstance(conditions, list):
+            conditions = conditions[0] if conditions else "Clear"
 
+        # Determine risk level from real forecast values
+        active_triggers = []
+        if rainfall >= thresholds["rainfall"]["level_1"]:
+            active_triggers.append(f"Rain {rainfall:.0f}mm")
+        if temp_max >= thresholds["heat"]["level_1"]:
+            active_triggers.append(f"Heat {temp_max:.0f}°C")
+        if current_aqi >= thresholds["aqi"]["level_1"]:
+            active_triggers.append(f"AQI {current_aqi:.0f}")
+
+        score = 0
+        if rainfall >= thresholds["rainfall"]["level_3"]:   score += 3
+        elif rainfall >= thresholds["rainfall"]["level_1"]: score += 1
+        if temp_max >= thresholds["heat"]["level_2"]:       score += 3
+        elif temp_max >= thresholds["heat"]["level_1"]:     score += 1
+        if current_aqi >= thresholds["aqi"]["level_2"]:     score += 2
+        elif current_aqi >= thresholds["aqi"]["level_1"]:   score += 1
+
+        risk = "High" if score >= 3 else "Medium" if score >= 1 else "Low"
+
+        # Build human-readable message
+        if active_triggers:
+            message = f"{', '.join(active_triggers)} forecast. Earnings may drop."
+        elif conditions in ("Rain", "Drizzle", "Thunderstorm"):
+            message = "Showers possible. Keep an eye on alerts."
+        elif temp_max > 38:
+            message = f"Hot day ({temp_max:.0f}°C). Stay hydrated — afternoon earnings may dip."
+        else:
+            message = "Clear conditions. Normal earnings expected."
+
+        day_idx = (now.weekday() + i) % 7
+        day_label = "Today" if i == 0 else "Tomorrow" if i == 1 else days_of_week[day_idx]
+
+        predictions.append({
+            "day": day_label,
+            "risk": risk,
+            "message": message,
+            "temp_max": round(temp_max, 1),
+            "rainfall_mm": round(rainfall, 1),
+            "conditions": conditions,
+            "source": day_data.get("source", "openweathermap_live"),
+        })
+
+    data_source = forecast[0].get("source", "mock") if forecast else "mock"
     return {
-        "zone_id": zone_id,
+        "zone_id":   zone_id,
         "zone_name": zone.name,
-        "tier": zone.tier.value,
+        "city":      city_name,
+        "tier":      zone.tier.value,
+        "aqi":       current_aqi,
+        "aqi_source": aqi_data.get("source", "mock"),
+        "forecast_source": data_source,
         "predictions": predictions,
     }
 
@@ -379,7 +435,7 @@ async def optimize_rider_schedule(rider_id: int, db: AsyncSession = Depends(get_
 
     savings = round(rider.avg_weekly_earnings * 0.05, 2) if rider.avg_weekly_earnings else 275.0
     
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     tomorrow_str = (now + timedelta(days=1)).strftime("%a")
 
     return {
@@ -399,7 +455,7 @@ _STRESS_SCENARIOS = {
     "monsoon_14day": {
         "name": "14-Day Continuous Monsoon",
         "description": (
-            "Extended monsoon causing daily rainfall > 64.5 mm/hr for 14 consecutive days "
+            "Extended monsoon causing daily rainfall >= 65 mm/hr for 14 consecutive days "
             "across coastal metro cities. Models clustered-claims risk to the portfolio."
         ),
         "trigger_type": "rainfall",
@@ -413,15 +469,15 @@ _STRESS_SCENARIOS = {
     "delhi_aqi_crisis": {
         "name": "Delhi-NCR Winter AQI Crisis",
         "description": (
-            "Sustained hazardous AQI > 400 for 10 days during November smog season. "
+            "Sustained hazardous AQI >= 500 for 10 days during the winter smog season. "
             "Outdoor delivery becomes unsafe, triggering full-day AQI payouts."
         ),
         "trigger_type": "aqi",
-        "trigger_value": 425.0,
+        "trigger_value": 500.0,
         "duration_days": 10,
         "active_hours_per_day": 20,
         "affected_cities": ["Delhi"],
-        "historical_reference": "November 2023 Delhi AQI crisis (AQI peaked at 460, GRAP-4 declared)",
+        "historical_reference": "Recurring Delhi-NCR winter smog episodes that force hazardous-air restrictions.",
         "base_bcr_stress_factor": 3.1,
     },
     "heat_wave_rajasthan": {

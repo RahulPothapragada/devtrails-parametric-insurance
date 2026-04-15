@@ -10,12 +10,16 @@ from contextlib import asynccontextmanager
 from app.api.routes import auth, riders, policies, claims, triggers, pricing, admin, fraud, payouts, underwriting, payments, data
 from app.core.config import settings
 from app.core.database import engine, Base
+from app.services.ml_models import ml
 from app.services.triggers.trigger_engine import TriggerEngine
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
+    # Startup: initialize ML models from the actual seeded database.
+    await ml.async_initialize()
+
     # Startup: Initialize trigger monitoring engine
     trigger_engine = TriggerEngine()
     trigger_engine.start()

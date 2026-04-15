@@ -28,7 +28,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.auth import get_current_rider
 from app.models.models import Rider, Zone, Policy, City
-from app.services.pricing.pricing_engine import PricingEngine
+from app.services.pricing.pricing_engine import PricingEngine, coverage_triggers_from_premium
 
 router = APIRouter()
 pricing_engine = PricingEngine()
@@ -118,7 +118,12 @@ async def create_order(
 
     now = datetime.now(timezone.utc)
     premium_data = pricing_engine.calculate_premium(
-        city=city_name, zone_tier=zone.tier.value, month=now.month
+        city=city_name,
+        zone_tier=zone.tier.value,
+        month=now.month,
+        city_tier=city.city_tier.value if city and city.city_tier else "tier_1",
+        area_type=zone.area_type.value if zone.area_type else "urban",
+        activity_tier=rider.activity_tier,
     )
     premium_amount = premium_data["total_weekly_premium"]
     amount_paise = int(round(premium_amount * 100))
@@ -240,10 +245,7 @@ async def verify_payment(
             "payment_verified": True,
             "mode": "sandbox" if is_sandbox else "live",
         },
-        coverage_triggers={
-            "rainfall": 280, "heat": 180, "aqi": 160,
-            "traffic": 100, "cold_fog": 120, "social": 400,
-        },
+        coverage_triggers=coverage_triggers_from_premium(premium_data["total_weekly_premium"]),
         status="active",
         auto_renew=body.auto_renew,
     )

@@ -14,8 +14,11 @@ from app.models.models import (
 )
 from app.services.fraud.fraud_engine import FraudEngine
 from app.services.mock_platform import generate_rider_activity
+from app.services.pricing.pricing_engine import coverage_triggers_from_premium, premium_to_weekly_cap
+from app.services.payout.payout_service import auto_disburse_claim
 
-COVERAGE_PCT = 0.60
+COVERAGE_PCT = 0.50
+MIN_LOSS_FOR_PAYOUT = 75.0
 AUTO_APPROVE_MAX = 20
 PENDING_REVIEW_MAX = 60
 
@@ -107,6 +110,20 @@ async def generate_claims_for_trigger(
             # Drop policy from payout generation for this trigger
             continue
 
+        existing_paid_like_result = await db.execute(
+            select(Claim).where(
+                Claim.policy_id == policy.id,
+                Claim.rider_id == rider.id,
+                Claim.event_time >= policy.week_start,
+                Claim.event_time < policy.week_end,
+                Claim.payout_amount > 0,
+                Claim.status != ClaimStatus.DENIED,
+            )
+        )
+        if existing_paid_like_result.scalars().first():
+            # One payout per rider per policy week, even if multiple triggers hit.
+            continue
+
         base_rate = ZONE_HOURLY_RATES.get(tier_str, 140)
         tier_mult = CITY_TIER_RATE_MULT.get(city_tier_str, 1.0)
         area_mult = AREA_TYPE_RATE_MULT.get(area_type_str, 1.0)
@@ -114,14 +131,21 @@ async def generate_claims_for_trigger(
 
         hours_lost = trigger_reading.duration_hours if trigger_reading.duration_hours else 3.0
 
-        # PARAMETRIC PAYOUT: Use the fixed trigger amount from the policy
-        # This is the core parametric model — trigger fires → fixed payout, no estimation
+        weekly_cap = premium_to_weekly_cap(policy.premium_amount)
+        trigger_losses = policy.coverage_triggers or coverage_triggers_from_premium(policy.premium_amount)
+
+        # PARAMETRIC PAYOUT: coverage_triggers now represent estimated income loss
+        # by peril. The product covers 50% of that loss, capped once per week.
         trigger_name = trigger_reading.trigger_type.value
-        if policy.coverage_triggers and trigger_name in policy.coverage_triggers:
-            payout_amount = float(policy.coverage_triggers[trigger_name])
-        else:
-            # Fallback: use a conservative default (30 Rs)
-            payout_amount = 30.0
+        estimated_loss = float(trigger_losses.get(trigger_name, 0.0))
+        if estimated_loss <= 0:
+            fallback_losses = coverage_triggers_from_premium(policy.premium_amount)
+            estimated_loss = float(fallback_losses.get(trigger_name, 0.0))
+
+        if estimated_loss < MIN_LOSS_FOR_PAYOUT:
+            continue
+
+        payout_amount = min(round(estimated_loss * COVERAGE_PCT, 2), weekly_cap)
 
         # Determine trigger type
         trigger_type = trigger_reading.trigger_type
@@ -169,16 +193,23 @@ async def generate_claims_for_trigger(
         ]
         await db.flush()
 
+        # ── PARAMETRIC AUTO-PAYOUT: immediately disburse for AUTO_APPROVED claims ──
+        payout_record = None
+        if status == ClaimStatus.AUTO_APPROVED and payout_amount > 0:
+            payout_record = await auto_disburse_claim(claim.id, db)
+
         results["claims_generated"] += 1
         results["total_payout"] += payout_amount
         results["claim_details"].append({
             "claim_id": claim.id,
             "rider_id": rider.id,
             "rider_name": rider.name,
+            "upi_id": rider.upi_id,
             "status": status.value,
             "fraud_score": fraud_score,
             "payout_amount": payout_amount,
             "classification": verdict.classification,
+            "auto_payout": payout_record,
         })
 
     results["total_payout"] = round(results["total_payout"], 2)

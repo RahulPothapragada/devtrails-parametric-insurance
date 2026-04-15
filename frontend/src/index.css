@@ -1,6 +1,54 @@
 @import "tailwindcss";
 
 @theme inline {
+  --color-surface-container-highest: #dae2fd;
+  --color-on-secondary-container: #57657a;
+  --color-tertiary-fixed: #ffdbcb;
+  --color-background: #faf8ff;
+  --color-inverse-surface: #283044;
+  --color-surface-container-low: #f2f3ff;
+  --color-surface-container-high: #e2e7ff;
+  --color-on-surface-variant: #424752;
+  --color-on-primary-fixed: #001b3d;
+  --color-tertiary-fixed-dim: #ffb691;
+  --color-on-primary: #ffffff;
+  --color-surface-tint: #005db5;
+  --color-on-secondary: #ffffff;
+  --color-on-tertiary-fixed-variant: #783100;
+  --color-on-secondary-fixed: #0d1c2e;
+  --color-outline-variant: #c2c6d4;
+  --color-on-tertiary-container: #ffd1bc;
+  --color-surface-dim: #d2d9f4;
+  --color-error-container: #ffdad6;
+  --color-surface-variant: #dae2fd;
+  --color-secondary-fixed-dim: #b9c7df;
+  --color-on-tertiary: #ffffff;
+  --color-secondary-container: #d5e3fc;
+  --color-on-error: #ffffff;
+  --color-primary: #00488d;
+  --color-on-tertiary-fixed: #341100;
+  --color-on-primary-container: #cadcff;
+  --color-primary-fixed-dim: #a8c8ff;
+  --color-on-error-container: #93000a;
+  --color-secondary: #515f74;
+  --color-tertiary-container: #a04401;
+  --color-surface-bright: #faf8ff;
+  --color-on-primary-fixed-variant: #00468b;
+  --color-on-background: #131b2e;
+  --color-on-surface: #131b2e;
+  --color-outline: #727783;
+  --color-tertiary: #7b3200;
+  --color-on-secondary-fixed-variant: #3a485b;
+  --color-inverse-primary: #a8c8ff;
+  --color-error: #ba1a1a;
+  --color-primary-container: #005fb8;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface: #faf8ff;
+  --color-inverse-on-surface: #eef0ff;
+  --color-secondary-fixed: #d5e3fc;
+  --color-primary-fixed: #d6e3ff;
+  --color-surface-container: #eaedff;
+
   --color-card: var(--card);
   --color-ring: var(--ring);
   --color-input: var(--input);
@@ -48,49 +96,49 @@
 }
 
 :root {
-  --card: #fdfdfd;
-  --ring: #000000;
-  --input: #ebebeb;
-  --muted: #f5f5f5;
-  --accent: #e2ebff;
-  --border: #e7e7ee;
+  --card: #ffffff;
+  --ring: #0071e3;
+  --input: #e5e5ea;
+  --muted: #f5f5f7;
+  --accent: #f5f5f7;
+  --border: #e5e5ea;
   --radius: 1.4rem;
   --chart-1: #4ac885;
-  --chart-2: #7033ff;
+  --chart-2: #0071e3;
   --chart-3: #fd822b;
   --chart-4: #3276e4;
   --chart-5: #747474;
-  --popover: #fcfcfc;
-  --primary: #7033ff;
+  --popover: #ffffff;
+  --primary: #0071e3;
   --sidebar: #f5f8fb;
   --spacing: 0.27rem;
   --font-mono: "IBM Plex Mono", monospace;
-  --font-sans: "Plus Jakarta Sans", sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --secondary: #edf0f4;
-  --background: #fdfdfd;
+  --background: #f5f5f7;
   --font-serif: "Lora", serif;
-  --foreground: #000000;
+  --foreground: #1d1d1f;
   --destructive: #e54b4f;
   --shadow-blur: 3px;
   --shadow-color: hsl(0 0% 0%);
-  --sidebar-ring: #000000;
+  --sidebar-ring: #0071e3;
   --shadow-spread: 0px;
-  --letter-spacing: -0.025em;
-  --shadow-opacity: 0.16;
-  --sidebar-accent: #ebebeb;
-  --sidebar-border: #ebebeb;
-  --card-foreground: #000000;
+  --letter-spacing: -0.015em;
+  --shadow-opacity: 0.05;
+  --sidebar-accent: #e5e5ea;
+  --sidebar-border: #e5e5ea;
+  --card-foreground: #1d1d1f;
   --shadow-offset-x: 0px;
   --shadow-offset-y: 2px;
-  --sidebar-primary: #000000;
-  --muted-foreground: #525252;
-  --accent-foreground: #1e69dc;
-  --popover-foreground: #000000;
+  --sidebar-primary: #1d1d1f;
+  --muted-foreground: #86868b;
+  --accent-foreground: #0071e3;
+  --popover-foreground: #1d1d1f;
   --primary-foreground: #ffffff;
-  --sidebar-foreground: #000000;
-  --secondary-foreground: #080808;
+  --sidebar-foreground: #1d1d1f;
+  --secondary-foreground: #1d1d1f;
   --destructive-foreground: #ffffff;
-  --sidebar-accent-foreground: #000000;
+  --sidebar-accent-foreground: #1d1d1f;
   --sidebar-primary-foreground: #ffffff;
 }
 
@@ -177,17 +225,17 @@
 
 /* Leaflet dark popup theme */
 .leaflet-popup-content-wrapper {
-  background: rgba(26, 27, 30, 0.95) !important;
-  color: #f0f0f0 !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  color: #1d1d1f !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
   border-radius: 12px !important;
   backdrop-filter: blur(12px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1) !important;
 }
 
 .leaflet-popup-tip {
-  background: rgba(26, 27, 30, 0.95) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
 }
 
 .leaflet-popup-close-button {
@@ -196,146 +244,4 @@
 
 .leaflet-container {
   font-family: var(--font-sans) !important;
-}
-
-/* ── Weather Simulation Overlays ───────────────────────────── */
-
-/* Rain */
-.weather-overlay-rain {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 500;
-  overflow: hidden;
-  background: linear-gradient(to bottom, rgba(59,130,246,0.06), rgba(59,130,246,0.02));
-}
-.weather-overlay-rain::before {
-  content: '';
-  position: absolute;
-  inset: -100%;
-  background-image:
-    repeating-linear-gradient(
-      108deg,
-      transparent 0,
-      transparent 6px,
-      rgba(147,197,253,0.22) 6px,
-      rgba(147,197,253,0.22) 7px
-    );
-  animation: rain-fall 0.45s linear infinite;
-}
-.weather-overlay-rain::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at 50% 0%, rgba(96,165,250,0.18) 0%, transparent 70%);
-}
-@keyframes rain-fall {
-  0%   { transform: translateY(-40%) translateX(0); }
-  100% { transform: translateY(10%)  translateX(-20px); }
-}
-
-/* Heatwave */
-.weather-overlay-heatwave {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 500;
-  overflow: hidden;
-  background: radial-gradient(ellipse at 50% 30%, rgba(239,68,68,0.14) 0%, rgba(251,146,60,0.07) 50%, transparent 75%);
-  animation: heat-pulse 2.4s ease-in-out infinite;
-}
-.weather-overlay-heatwave::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    180deg,
-    transparent 0,
-    transparent 3px,
-    rgba(251,146,60,0.04) 3px,
-    rgba(251,146,60,0.04) 4px
-  );
-  animation: heat-shimmer 3s ease-in-out infinite alternate;
-}
-@keyframes heat-pulse {
-  0%, 100% { opacity: 0.55; }
-  50%       { opacity: 1;    }
-}
-@keyframes heat-shimmer {
-  0%   { background-position: 0 0;   }
-  100% { background-position: 0 40px;}
-}
-
-/* Bandh (city lockdown) */
-.weather-overlay-bandh {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 500;
-  background: rgba(15,15,15,0.35);
-  animation: bandh-flicker 4s ease-in-out infinite;
-}
-.weather-overlay-bandh::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent 0,
-    transparent 3px,
-    rgba(239,68,68,0.04) 3px,
-    rgba(239,68,68,0.04) 4px
-  );
-}
-@keyframes bandh-flicker {
-  0%, 100% { opacity: 0.7; }
-  48%       { opacity: 0.7; }
-  50%       { opacity: 0.5; }
-  52%       { opacity: 0.7; }
-}
-
-/* Attack (threat pulse) */
-.weather-overlay-attack {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 500;
-  overflow: hidden;
-}
-.weather-overlay-attack::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at 50% 50%, rgba(239,68,68,0.18) 0%, transparent 70%);
-  animation: attack-pulse 1.2s ease-in-out infinite;
-}
-.weather-overlay-attack::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    -45deg,
-    transparent 0,
-    transparent 8px,
-    rgba(239,68,68,0.05) 8px,
-    rgba(239,68,68,0.05) 9px
-  );
-  animation: attack-scan 2s linear infinite;
-}
-@keyframes attack-pulse {
-  0%, 100% { opacity: 0.3; transform: scale(1);    }
-  50%       { opacity: 1;   transform: scale(1.04); }
-}
-@keyframes attack-scan {
-  0%   { background-position: 0 0;    }
-  100% { background-position: 40px 0; }
-}
-
-/* Pipeline step pulse */
-.pipeline-step-active {
-  animation: step-pulse 1.4s ease-in-out infinite;
-}
-@keyframes step-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(16,163,127,0); }
-  50%       { box-shadow: 0 0 0 6px rgba(16,163,127,0.2); }
 }

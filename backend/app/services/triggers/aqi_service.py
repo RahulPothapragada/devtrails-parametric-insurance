@@ -1,71 +1,70 @@
 """
-AQI Service — Air Quality Index monitoring.
-Uses WAQI (aqicn.org) API — free tier with token.
+AQI Service — delegates to WeatherService.get_air_quality().
+
+OpenWeatherMap's /air_pollution endpoint provides AQI + PM2.5 + PM10
+using the same API key as weather — no separate WAQI token needed.
+Falls back to WAQI if configured, then to mock.
 """
 
 import httpx
 from app.core.config import settings
+from app.services.triggers.weather_service import WeatherService, CITY_COORDS
 import logging
 
 logger = logging.getLogger(__name__)
 
-WAQI_BASE = "https://api.waqi.info"
+_weather = WeatherService()
 
 
 class AQIService:
-    """Fetches real-time AQI data for Indian cities."""
+    """Fetches real-time AQI for Indian cities."""
 
     def __init__(self):
-        self.api_key = settings.WAQI_API_KEY
+        self.waqi_key = settings.WAQI_API_KEY
 
     async def get_current(self, city: str) -> dict:
-        """Get current AQI for a city."""
-        if not self.api_key:
-            return self._mock_aqi(city)
+        # 1. Try OWM air pollution (same key as weather — always preferred)
+        result = await _weather.get_city_air_quality(city)
+        if result.get("source") != "mock":
+            return result
 
+        # 2. WAQI fallback if configured
+        if self.waqi_key:
+            result = await self._waqi(city)
+            if result:
+                return result
+
+        # 3. Static mock
+        return self._mock_aqi(city)
+
+    async def _waqi(self, city: str) -> dict | None:
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{WAQI_BASE}/feed/{city}/",
-                    params={"token": self.api_key},
-                    timeout=10.0,
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.get(
+                    f"https://api.waqi.info/feed/{city}/",
+                    params={"token": self.waqi_key},
                 )
-                data = response.json()
-
+                data = r.json()
             if data["status"] == "ok":
-                aqi_data = data["data"]
+                d = data["data"]
                 return {
-                    "aqi": aqi_data["aqi"],
-                    "pm25": aqi_data.get("iaqi", {}).get("pm25", {}).get("v", 0),
-                    "pm10": aqi_data.get("iaqi", {}).get("pm10", {}).get("v", 0),
-                    "dominant_pollutant": aqi_data.get("dominentpol", "pm25"),
-                    "station": aqi_data.get("city", {}).get("name", city),
-                    "source": "waqi",
+                    "aqi":                d["aqi"],
+                    "pm25":               d.get("iaqi", {}).get("pm25", {}).get("v", 0),
+                    "pm10":               d.get("iaqi", {}).get("pm10", {}).get("v", 0),
+                    "dominant_pollutant": d.get("dominentpol", "pm25"),
+                    "source":             "waqi_live",
                 }
-            return self._mock_aqi(city)
-
         except Exception as e:
-            logger.error(f"WAQI API error: {e}")
-            return self._mock_aqi(city)
+            logger.error("WAQI error: %s", e)
+        return None
 
     def _mock_aqi(self, city: str) -> dict:
-        """Mock AQI data for development."""
-        # Realistic mock values by city
-        mock_values = {
-            "mumbai": {"aqi": 145, "pm25": 55},
-            "delhi": {"aqi": 380, "pm25": 210},
-            "bangalore": {"aqi": 95, "pm25": 35},
-            "chennai": {"aqi": 110, "pm25": 42},
-            "kolkata": {"aqi": 175, "pm25": 75},
+        defaults = {
+            "mumbai": 145, "delhi": 380, "bangalore": 95,
+            "chennai": 110, "kolkata": 175,
         }
-        city_lower = city.lower()
-        values = mock_values.get(city_lower, {"aqi": 120, "pm25": 45})
-
+        aqi = defaults.get(city.lower(), 120)
         return {
-            "aqi": values["aqi"],
-            "pm25": values["pm25"],
-            "pm10": values["pm25"] * 1.4,
-            "dominant_pollutant": "pm25",
-            "station": f"{city} Central",
-            "source": "mock",
+            "aqi": aqi, "pm25": round(aqi * 0.38, 1), "pm10": round(aqi * 0.53, 1),
+            "dominant_pollutant": "pm25", "source": "mock",
         }

@@ -127,22 +127,21 @@ def generate_rider_activity(
     zone_lng: float,
     is_suspicious: bool = False,
     trigger_time: Optional[datetime] = None,
+    hourly_rate: float = 95.0,
 ) -> dict:
     if is_suspicious:
         return _generate_suspicious_activity(rider_id, date, zone_lat, zone_lng, trigger_time)
-    return _generate_honest_activity(rider_id, date, zone_lat, zone_lng, trigger_time)
+    return _generate_honest_activity(rider_id, date, zone_lat, zone_lng, trigger_time, hourly_rate)
 
 
-def _generate_honest_activity(rider_id, date, zone_lat, zone_lng, trigger_time=None):
+def _generate_honest_activity(rider_id, date, zone_lat, zone_lng, trigger_time=None, hourly_rate: float = 95.0):
     login_hour = random.randint(6, 10)
     login_time = date.replace(hour=login_hour, minute=random.randint(0, 59))
-    hours_active = round(random.uniform(3.0, 6.0), 1)
+    hours_active = round(random.uniform(7.0, 10.0), 1)
     logout_time = login_time + timedelta(hours=hours_active)
-    deliveries = random.randint(10, 25)
-    earnings = deliveries * random.uniform(15, 25)
+    deliveries = int(hours_active * random.uniform(3, 5))
+    earnings = hours_active * hourly_rate * random.uniform(0.9, 1.1)
     gps_points = _generate_moving_gps(zone_lat, zone_lng, int(hours_active * 4))
-    
-    platforms = ["Zomato", "Swiggy", "Zepto"]
 
     return {
         "rider_id": rider_id,

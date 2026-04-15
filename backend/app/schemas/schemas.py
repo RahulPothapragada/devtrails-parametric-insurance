@@ -137,14 +137,26 @@ class RiderUpdate(BaseModel):
     avg_weekly_earnings: Optional[float] = None
     avg_hourly_rate: Optional[float] = None
 
+class DailyEarning(BaseModel):
+    date: str        # "YYYY-MM-DD"
+    day: str         # "Mon", "Tue", etc.
+    earnings: float
+    deliveries: int
+    hours: float
+
 class RiderDashboard(BaseModel):
     rider: RiderOut
     zone: ZoneOut
+    city_name: str = ""
+    city_tier: str = "tier_1"
     active_policy: Optional["PolicyOut"] = None
     recent_claims: List["ClaimOut"] = []
     shield_level: int
     weekly_earnings: float
+    total_deliveries: int = 0
+    active_hours: float = 0.0
     risk_summary: Dict[str, float] = {}
+    daily_earnings: List[DailyEarning] = []
 
 
 # ── Policy ──
@@ -250,6 +262,7 @@ class FraudCheckOut(BaseModel):
     walls: List[Dict[str, Any]]
     auto_approved: bool
     processing_time: str
+    ml_anomaly_score: float = 0.0
 
 
 # ── Admin ──

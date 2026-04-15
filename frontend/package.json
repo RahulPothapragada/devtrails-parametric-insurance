@@ -15,6 +15,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@types/leaflet": "^1.9.21",
     "@types/three": "^0.183.1",
+    "@vis.gl/react-google-maps": "^1.8.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
@@ -32,6 +33,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.4",
     "@tailwindcss/vite": "^4.2.2",
+    "@types/google.maps": "^3.58.1",
     "@types/node": "^24.12.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

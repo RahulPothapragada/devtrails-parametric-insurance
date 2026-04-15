@@ -7,7 +7,7 @@ from sqlalchemy import select
 from app.core.database import get_db
 from app.models.models import PremiumRateCard
 from app.schemas.schemas import PremiumQuote, RateCardOut
-from app.services.pricing.pricing_engine import PricingEngine
+from app.services.pricing.pricing_engine import PricingEngine, CITY_TIER_CODES
 
 router = APIRouter()
 pricing_engine = PricingEngine()
@@ -19,7 +19,8 @@ async def get_premium_quote(
     zone_tier: str = Query(default="medium"),
     month: int = Query(default=7, ge=1, le=12),
 ):
-    result = pricing_engine.calculate_premium(city=city, zone_tier=zone_tier, month=month)
+    city_tier = CITY_TIER_CODES.get(city.lower(), "tier_1")
+    result = pricing_engine.calculate_premium(city=city, zone_tier=zone_tier, month=month, city_tier=city_tier)
     return PremiumQuote(
         city=result["city"],
         zone_tier=result["zone_tier"],
@@ -46,4 +47,5 @@ async def get_rate_cards(
 
 @router.get("/annual/{city}/{zone_tier}")
 async def annual_schedule(city: str, zone_tier: str):
-    return pricing_engine.calculate_annual_schedule(city=city, zone_tier=zone_tier)
+    city_tier = CITY_TIER_CODES.get(city.lower(), "tier_1")
+    return pricing_engine.calculate_annual_schedule(city=city, zone_tier=zone_tier, city_tier=city_tier)

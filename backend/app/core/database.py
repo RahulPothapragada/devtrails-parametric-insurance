@@ -1,15 +1,29 @@
-"""Database setup with SQLAlchemy async engine."""
+"""Database setup — Supabase PostgreSQL via asyncpg."""
 
-import os
+import ssl
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
 
-# Use SQLite for local demo (no Postgres needed)
-_db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "flowsecure.db")
-db_url = f"sqlite+aiosqlite:///{_db_path}"
+db_url = settings.DATABASE_URL
 
-engine = create_async_engine(db_url, echo=False, connect_args={"check_same_thread": False})
+# asyncpg needs SSL for Supabase; aiosqlite needs check_same_thread=False
+if db_url.startswith("postgresql"):
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+    connect_args = {"ssl": ssl_ctx}
+else:
+    connect_args = {"check_same_thread": False}
+
+engine = create_async_engine(
+    db_url,
+    echo=False,
+    pool_size=5,
+    max_overflow=10,
+    pool_pre_ping=True,
+    connect_args=connect_args,
+)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

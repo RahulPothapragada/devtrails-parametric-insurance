@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     WAQI_API_KEY: Optional[str] = None
     NEWSAPI_KEY: Optional[str] = None
     TOMTOM_API_KEY: Optional[str] = None
+    GOOGLE_MAPS_API_KEY: Optional[str] = None
 
     # Razorpay (Test Mode)
     RAZORPAY_KEY_ID: Optional[str] = None

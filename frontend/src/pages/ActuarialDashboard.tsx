@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   ReferenceLine, CartesianGrid,
 } from 'recharts';
-import { AlertTriangle, TrendingUp, DollarSign, Activity, Zap, X, ChevronRight } from 'lucide-react';
+import { AlertTriangle, TrendingUp, DollarSign, Activity, Zap, X, ChevronRight, RefreshCw } from 'lucide-react';
+import { API_BASE } from '@/lib/api';
 
 // ─── Types ────────────────────────────────────────────────────────
 type Tier = 'tier_1' | 'tier_2' | 'tier_3';
@@ -30,89 +31,20 @@ const STATUS_CFG: Record<HealthStatus, { color: string; label: string; bg: strin
 const TIER_LABEL: Record<Tier, string>  = { tier_1: 'Metro', tier_2: 'Major City', tier_3: 'Emerging' };
 const TIER_COLOR: Record<Tier, string>  = { tier_1: '#a78bfa', tier_2: '#60a5fa', tier_3: '#34d399' };
 
+// Static lookups not in backend
+const STATE_MAP: Record<string, string> = {
+  Mumbai: 'Maharashtra', Delhi: 'Delhi', Bangalore: 'Karnataka',
+  Chennai: 'Tamil Nadu', Kolkata: 'West Bengal',
+  Pune: 'Maharashtra', Hyderabad: 'Telangana', Ahmedabad: 'Gujarat', Jaipur: 'Rajasthan',
+  Lucknow: 'Uttar Pradesh', Indore: 'Madhya Pradesh', Patna: 'Bihar', Bhopal: 'Madhya Pradesh',
+};
+
 function getStatus(lr: number): HealthStatus {
   if (lr > 0.85) return 'critical';
   if (lr > 0.70) return 'watch';
   if (lr > 0.55) return 'optimal';
   return 'healthy';
 }
-
-// ─── Deterministic weekly trend builder ───────────────────────────
-const mkTrend = (lrs: number[], premBase: number): WeekPoint[] =>
-  lrs.map((lr, i) => {
-    const premium = Math.round(premBase * (0.94 + (i % 3) * 0.02));
-    return { week: `W${i + 1}`, lr, premium, payout: Math.round(premium * lr), claims: Math.round(premium * lr / 280) };
-  });
-
-// ─── City Data (aligned with backend pricing model) ─────────────────────
-// Premium pool = 1000 riders × avg_premium × 8 weeks
-// Tier 1 avg premium ≈ ₹62/week, Tier 2 ≈ ₹45/week, Tier 3 ≈ ₹30/week
-// Trigger payouts: Tier1 ₹18-45, Tier2 ₹14-35, Tier3 ₹10-25 per event
-const CITIES: CityData[] = [
-  // Tier 1 — Metros (1000 riders × ₹62 avg/week × 8 weeks = ₹496,000)
-  { name: 'Mumbai',    state: 'Maharashtra',    tier: 'tier_1', lr: 0.48, bcr: 0.48, status: 'healthy',
-    totalPremium: 496000, totalPayout: 238080, totalClaims: 874,  monsoonMult: 2.2,
-    urbanPct: 71, semiUrbanPct: 21, ruralPct: 8,
-    trend: mkTrend([0.38,0.42,0.52,0.55,0.51,0.48,0.44,0.46], 62000) },
-  { name: 'Delhi',     state: 'Delhi',          tier: 'tier_1', lr: 0.55, bcr: 0.55, status: 'optimal',
-    totalPremium: 496000, totalPayout: 272800, totalClaims: 1058, monsoonMult: 1.6,
-    urbanPct: 68, semiUrbanPct: 24, ruralPct: 8,
-    trend: mkTrend([0.58,0.56,0.53,0.51,0.54,0.57,0.55,0.54], 62000) },
-  { name: 'Bangalore', state: 'Karnataka',      tier: 'tier_1', lr: 0.42, bcr: 0.42, status: 'healthy',
-    totalPremium: 496000, totalPayout: 208320, totalClaims: 920,  monsoonMult: 1.8,
-    urbanPct: 75, semiUrbanPct: 18, ruralPct: 7,
-    trend: mkTrend([0.38,0.40,0.44,0.42,0.41,0.39,0.45,0.43], 62000) },
-  { name: 'Chennai',   state: 'Tamil Nadu',     tier: 'tier_1', lr: 0.52, bcr: 0.52, status: 'healthy',
-    totalPremium: 496000, totalPayout: 257920, totalClaims: 964,  monsoonMult: 2.0,
-    urbanPct: 65, semiUrbanPct: 25, ruralPct: 10,
-    trend: mkTrend([0.54,0.51,0.49,0.53,0.52,0.51,0.53,0.55], 62000) },
-  { name: 'Kolkata',   state: 'West Bengal',    tier: 'tier_1', lr: 0.45, bcr: 0.45, status: 'healthy',
-    totalPremium: 496000, totalPayout: 223200, totalClaims: 851,  monsoonMult: 2.4,
-    urbanPct: 62, semiUrbanPct: 25, ruralPct: 13,
-    trend: mkTrend([0.42,0.44,0.48,0.46,0.43,0.45,0.47,0.46], 62000) },
-  // Tier 2 — Major Cities (1000 riders × ₹45 avg/week × 8 weeks = ₹360,000)
-  { name: 'Pune',      state: 'Maharashtra',    tier: 'tier_2', lr: 0.35, bcr: 0.35, status: 'healthy',
-    totalPremium: 360000, totalPayout: 126000,  totalClaims: 897,  monsoonMult: 1.8,
-    urbanPct: 60, semiUrbanPct: 25, ruralPct: 15,
-    trend: mkTrend([0.32,0.34,0.36,0.35,0.33,0.36,0.35,0.37], 45000) },
-  { name: 'Hyderabad', state: 'Telangana',      tier: 'tier_2', lr: 0.37, bcr: 0.37, status: 'healthy',
-    totalPremium: 360000, totalPayout: 133200,  totalClaims: 872,  monsoonMult: 1.5,
-    urbanPct: 65, semiUrbanPct: 22, ruralPct: 13,
-    trend: mkTrend([0.34,0.37,0.39,0.36,0.38,0.37,0.35,0.38], 45000) },
-  { name: 'Ahmedabad', state: 'Gujarat',        tier: 'tier_2', lr: 0.40, bcr: 0.40, status: 'healthy',
-    totalPremium: 360000, totalPayout: 144000,  totalClaims: 911,  monsoonMult: 1.4,
-    urbanPct: 58, semiUrbanPct: 28, ruralPct: 14,
-    trend: mkTrend([0.38,0.42,0.40,0.41,0.39,0.40,0.38,0.41], 45000) },
-  { name: 'Jaipur',    state: 'Rajasthan',      tier: 'tier_2', lr: 0.38, bcr: 0.38, status: 'healthy',
-    totalPremium: 360000, totalPayout: 136800,  totalClaims: 1009,  monsoonMult: 1.3,
-    urbanPct: 55, semiUrbanPct: 30, ruralPct: 15,
-    trend: mkTrend([0.36,0.39,0.38,0.37,0.36,0.39,0.38,0.39], 45000) },
-  // Tier 3 — Emerging (1000 riders × ₹30 avg/week × 8 weeks = ₹240,000)
-  { name: 'Lucknow',   state: 'Uttar Pradesh',  tier: 'tier_3', lr: 0.34, bcr: 0.34, status: 'healthy',
-    totalPremium: 240000, totalPayout: 81600,  totalClaims: 922,  monsoonMult: 2.0,
-    urbanPct: 50, semiUrbanPct: 30, ruralPct: 20,
-    trend: mkTrend([0.31,0.33,0.36,0.34,0.32,0.35,0.34,0.35], 30000) },
-  { name: 'Indore',    state: 'Madhya Pradesh', tier: 'tier_3', lr: 0.32, bcr: 0.32, status: 'healthy',
-    totalPremium: 240000, totalPayout: 76800,  totalClaims: 969,  monsoonMult: 1.5,
-    urbanPct: 55, semiUrbanPct: 28, ruralPct: 17,
-    trend: mkTrend([0.30,0.32,0.34,0.31,0.33,0.32,0.30,0.33], 30000) },
-  { name: 'Patna',     state: 'Bihar',          tier: 'tier_3', lr: 0.37, bcr: 0.37, status: 'healthy',
-    totalPremium: 240000, totalPayout: 88800,  totalClaims: 1002,  monsoonMult: 2.8,
-    urbanPct: 45, semiUrbanPct: 30, ruralPct: 25,
-    trend: mkTrend([0.39,0.37,0.35,0.38,0.34,0.37,0.38,0.36], 30000) },
-  { name: 'Bhopal',    state: 'Madhya Pradesh', tier: 'tier_3', lr: 0.26, bcr: 0.26, status: 'healthy',
-    totalPremium: 240000, totalPayout: 62400,  totalClaims: 857,  monsoonMult: 1.6,
-    urbanPct: 52, semiUrbanPct: 28, ruralPct: 20,
-    trend: mkTrend([0.24,0.26,0.28,0.25,0.27,0.26,0.24,0.27], 30000) },
-];
-
-// ─── Platform Totals ──────────────────────────────────────────────
-const PLATFORM = {
-  totalPremium: CITIES.reduce((s, c) => s + c.totalPremium, 0),
-  totalPayout:  CITIES.reduce((s, c) => s + c.totalPayout,  0),
-  totalClaims:  CITIES.reduce((s, c) => s + c.totalClaims,  0),
-};
-const PLATFORM_BCR = PLATFORM.totalPayout / PLATFORM.totalPremium;
 
 // ─── Sub-components ────────────────────────────────────────────────
 
@@ -133,12 +65,10 @@ function LRBar({ lr, status }: { lr: number; status: HealthStatus }) {
   const cfg = STATUS_CFG[status];
   return (
     <div className="relative w-full h-2.5 bg-white/5 rounded-full overflow-visible mt-1 mb-3">
-      {/* zone dividers */}
       {[55, 70, 85].map(p => (
         <div key={p} className="absolute top-0 bottom-0 w-px"
           style={{ left: `${p}%`, background: p === 85 ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.1)' }} />
       ))}
-      {/* fill */}
       <motion.div
         initial={{ width: 0 }}
         animate={{ width: `${pct}%` }}
@@ -146,7 +76,6 @@ function LRBar({ lr, status }: { lr: number; status: HealthStatus }) {
         className="h-full rounded-full"
         style={{ background: `linear-gradient(to right, #10a37f44, ${cfg.color})` }}
       />
-      {/* dot */}
       <motion.div
         initial={{ left: '0%' }}
         animate={{ left: `${Math.min(pct - 1, 97)}%` }}
@@ -173,7 +102,6 @@ function CityCard({ city, selected, onClick }: { city: CityData; selected: boole
         borderWidth: selected ? '1.5px' : '1px',
       }}
     >
-      {/* pulse for critical */}
       {city.status === 'critical' && (
         <motion.div
           animate={{ opacity: [0.2, 0.5, 0.2] }}
@@ -182,8 +110,6 @@ function CityCard({ city, selected, onClick }: { city: CityData; selected: boole
           style={{ background: 'radial-gradient(ellipse at top right, rgba(239,68,68,0.12), transparent 70%)' }}
         />
       )}
-
-      {/* header */}
       <div className="flex justify-between items-start mb-1">
         <div>
           <h3 className="font-semibold text-white/90 text-sm leading-tight">{city.name}</h3>
@@ -196,8 +122,6 @@ function CityCard({ city, selected, onClick }: { city: CityData; selected: boole
           <StatusBadge status={city.status} />
         </div>
       </div>
-
-      {/* LR label */}
       <div className="flex justify-between items-center text-xs mt-3">
         <span className="text-gray-500">Loss Ratio</span>
         <span className="font-mono font-bold" style={{ color: cfg.color }}>
@@ -205,8 +129,6 @@ function CityCard({ city, selected, onClick }: { city: CityData; selected: boole
         </span>
       </div>
       <LRBar lr={city.lr} status={city.status} />
-
-      {/* metrics */}
       <div className="grid grid-cols-3 gap-1 mt-2">
         {[
           { label: 'BCR', val: city.bcr.toFixed(2) },
@@ -219,7 +141,6 @@ function CityCard({ city, selected, onClick }: { city: CityData; selected: boole
           </div>
         ))}
       </div>
-
       {selected && (
         <div className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full animate-ping" style={{ background: cfg.color }} />
       )}
@@ -227,7 +148,7 @@ function CityCard({ city, selected, onClick }: { city: CityData; selected: boole
   );
 }
 
-function DetailPanel({ city, onClose }: { city: CityData; onClose: () => void }) {
+function DetailPanel({ city, trendLoading, onClose }: { city: CityData; trendLoading: boolean; onClose: () => void }) {
   const cfg = STATUS_CFG[city.status];
 
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -263,74 +184,78 @@ function DetailPanel({ city, onClose }: { city: CityData; onClose: () => void })
           </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Trend Chart */}
-          <div className="lg:col-span-2">
-            <p className="text-xs text-gray-500 mb-3">Loss Ratio Trend (red line = 85% suspension threshold)</p>
-            <div className="h-[220px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={city.trend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="lrGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={cfg.color} stopOpacity={0.3} />
-                      <stop offset="95%" stopColor={cfg.color} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                  <XAxis dataKey="week" stroke="#52525b" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis domain={[0.3, 1.1]} stroke="#52525b" fontSize={11} tickLine={false} axisLine={false}
-                    tickFormatter={(v: number) => `${(v * 100).toFixed(0)}%`} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <ReferenceLine y={0.85} stroke="#ef4444" strokeDasharray="4 4" strokeWidth={1.5}
-                    label={{ value: '85% Limit', position: 'right', fill: '#ef4444', fontSize: 10 }} />
-                  <ReferenceLine y={0.55} stroke="#10a37f" strokeDasharray="4 4" strokeWidth={1}
-                    label={{ value: 'Target', position: 'right', fill: '#10a37f', fontSize: 10 }} />
-                  <Area type="monotone" dataKey="lr" stroke={cfg.color} strokeWidth={2}
-                    fill="url(#lrGrad)" dot={{ fill: cfg.color, r: 3, strokeWidth: 0 }}
-                    activeDot={{ r: 5, fill: cfg.color }} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+        {trendLoading || city.trend.length === 0 ? (
+          <div className="h-[220px] flex items-center justify-center text-gray-500 text-sm">
+            {trendLoading ? 'Loading trend data…' : 'No trend data available'}
           </div>
-
-          {/* Area Breakdown + Stats */}
-          <div className="flex flex-col gap-4">
-            <div className="glass-panel p-4">
-              <p className="text-xs text-gray-500 mb-3 uppercase tracking-wider">Payout Area Split</p>
-              {[
-                { label: 'Urban', pct: city.urbanPct, color: '#0ea5e9' },
-                { label: 'Semi-Urban', pct: city.semiUrbanPct, color: '#f59e0b' },
-                { label: 'Rural', pct: city.ruralPct, color: '#10a37f' },
-              ].map(a => (
-                <div key={a.label} className="mb-2.5">
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-gray-400">{a.label}</span>
-                    <span className="font-mono" style={{ color: a.color }}>{a.pct}%</span>
-                  </div>
-                  <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                    <motion.div initial={{ width: 0 }} animate={{ width: `${a.pct}%` }}
-                      transition={{ duration: 1, delay: 0.2 }}
-                      className="h-full rounded-full" style={{ background: a.color }} />
-                  </div>
-                </div>
-              ))}
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <p className="text-xs text-gray-500 mb-3">Loss Ratio Trend (red line = 85% suspension threshold)</p>
+              <div className="h-[220px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={city.trend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="lrGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor={cfg.color} stopOpacity={0.3} />
+                        <stop offset="95%" stopColor={cfg.color} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                    <XAxis dataKey="week" stroke="#52525b" fontSize={11} tickLine={false} axisLine={false} />
+                    <YAxis domain={[0, 1.1]} stroke="#52525b" fontSize={11} tickLine={false} axisLine={false}
+                      tickFormatter={(v: number) => `${(v * 100).toFixed(0)}%`} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <ReferenceLine y={0.85} stroke="#ef4444" strokeDasharray="4 4" strokeWidth={1.5}
+                      label={{ value: '85% Limit', position: 'right', fill: '#ef4444', fontSize: 10 }} />
+                    <ReferenceLine y={0.55} stroke="#10a37f" strokeDasharray="4 4" strokeWidth={1}
+                      label={{ value: 'Target', position: 'right', fill: '#10a37f', fontSize: 10 }} />
+                    <Area type="monotone" dataKey="lr" stroke={cfg.color} strokeWidth={2}
+                      fill="url(#lrGrad)" dot={{ fill: cfg.color, r: 3, strokeWidth: 0 }}
+                      activeDot={{ r: 5, fill: cfg.color }} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             </div>
 
-            <div className="glass-panel p-4 space-y-3">
-              {[
-                { label: '8-Wk Premium Pool', val: `₹${(city.totalPremium / 100000).toFixed(2)}L` },
-                { label: '8-Wk Claims Paid',  val: `₹${(city.totalPayout  / 100000).toFixed(2)}L` },
-                { label: 'Total Claims',        val: city.totalClaims.toLocaleString() },
-                { label: 'Avg Claim Size',      val: `₹${Math.round(city.totalPayout / city.totalClaims).toLocaleString()}` },
-              ].map(s => (
-                <div key={s.label} className="flex justify-between items-center">
-                  <span className="text-xs text-gray-500">{s.label}</span>
-                  <span className="text-xs font-mono font-bold text-white/80">{s.val}</span>
-                </div>
-              ))}
+            <div className="flex flex-col gap-4">
+              <div className="glass-panel p-4">
+                <p className="text-xs text-gray-500 mb-3 uppercase tracking-wider">Payout Area Split</p>
+                {[
+                  { label: 'Urban', pct: city.urbanPct, color: '#0ea5e9' },
+                  { label: 'Semi-Urban', pct: city.semiUrbanPct, color: '#f59e0b' },
+                  { label: 'Rural', pct: city.ruralPct, color: '#10a37f' },
+                ].map(a => (
+                  <div key={a.label} className="mb-2.5">
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-gray-400">{a.label}</span>
+                      <span className="font-mono" style={{ color: a.color }}>{a.pct.toFixed(0)}%</span>
+                    </div>
+                    <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                      <motion.div initial={{ width: 0 }} animate={{ width: `${a.pct}%` }}
+                        transition={{ duration: 1, delay: 0.2 }}
+                        className="h-full rounded-full" style={{ background: a.color }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="glass-panel p-4 space-y-3">
+                {[
+                  { label: '8-Wk Premium Pool', val: `₹${(city.totalPremium / 100000).toFixed(2)}L` },
+                  { label: '8-Wk Claims Paid',  val: `₹${(city.totalPayout  / 100000).toFixed(2)}L` },
+                  { label: 'Total Claims',        val: city.totalClaims.toLocaleString() },
+                  { label: 'Avg Claim Size',      val: city.totalClaims > 0 ? `₹${Math.round(city.totalPayout / city.totalClaims).toLocaleString()}` : '—' },
+                ].map(s => (
+                  <div key={s.label} className="flex justify-between items-center">
+                    <span className="text-xs text-gray-500">{s.label}</span>
+                    <span className="text-xs font-mono font-bold text-white/80">{s.val}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </motion.div>
   );
@@ -338,30 +263,33 @@ function DetailPanel({ city, onClose }: { city: CityData; onClose: () => void })
 
 // ─── Stress Test ───────────────────────────────────────────────────
 interface StressRow {
-  name: string; tier: Tier; currentLr: number; stressLr: number;
-  currentStatus: HealthStatus; stressStatus: HealthStatus; wouldFlip: boolean;
+  city: string; city_tier: string;
+  current_lr: number; stress_lr: number;
+  current_status: string; stress_status: string;
+  monsoon_multiplier: number; would_flip_to_suspended: boolean;
 }
 
 function StressTestPanel() {
   const [ran, setRan] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<StressRow[]>([]);
+  const [scenario, setScenario] = useState('');
 
-  const results = useMemo<StressRow[]>(() =>
-    CITIES.map(c => {
-      const sl = Math.min(c.lr * c.monsoonMult, 2.5);
-      return {
-        name: c.name, tier: c.tier,
-        currentLr: c.lr, stressLr: sl,
-        currentStatus: c.status, stressStatus: getStatus(sl),
-        wouldFlip: sl > 0.85 && c.lr <= 0.85,
-      };
-    }), []);
+  const suspendCount = useMemo(() => results.filter(r => r.stress_lr > 0.85).length, [results]);
 
-  const suspendCount = results.filter(r => r.stressLr > 0.85).length;
-
-  const handleRun = () => {
+  const handleRun = async () => {
     setLoading(true);
-    setTimeout(() => { setLoading(false); setRan(true); }, 1200);
+    try {
+      const res = await fetch(`${API_BASE}/admin/actuarial/stress-test`);
+      const data = await res.json();
+      setResults(data.cities || []);
+      setScenario(data.scenario || '14-Day Extreme Monsoon');
+      setRan(true);
+    } catch {
+      setRan(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -390,7 +318,7 @@ function StressTestPanel() {
           </button>
         )}
         {ran && (
-          <button onClick={() => setRan(false)}
+          <button onClick={() => { setRan(false); setResults([]); }}
             className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
             Reset
           </button>
@@ -398,24 +326,22 @@ function StressTestPanel() {
       </div>
 
       <AnimatePresence>
-        {ran && (
+        {ran && results.length > 0 && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}>
 
-            {/* Summary banner */}
             <div className="mb-4 p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center gap-3">
               <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
               <div>
                 <p className="text-sm font-semibold text-red-400">
-                  {suspendCount} of 13 cities would trigger enrolment suspension
+                  {suspendCount} of {results.length} cities would trigger enrolment suspension
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Methodology: current LR × city-specific IMD monsoon intensity multiplier
+                  {scenario}
                 </p>
               </div>
             </div>
 
-            {/* Results table */}
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -430,28 +356,30 @@ function StressTestPanel() {
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {results.map((r, i) => {
-                    const stressColor = r.stressLr > 0.85 ? '#ef4444' : r.stressLr > 0.70 ? '#f59e0b' : '#0ea5e9';
+                    const stressColor = r.stress_lr > 0.85 ? '#ef4444' : r.stress_lr > 0.70 ? '#f59e0b' : '#0ea5e9';
+                    const tierColor = TIER_COLOR[(r.city_tier as Tier)] || '#94a3b8';
+                    const tierLabel = TIER_LABEL[(r.city_tier as Tier)] || r.city_tier;
                     return (
-                      <motion.tr key={r.name}
+                      <motion.tr key={r.city}
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: i * 0.04 }}
-                        className={r.stressLr > 0.85 ? 'bg-red-500/5' : ''}>
-                        <td className="py-2.5 font-medium text-white/80">{r.name}</td>
-                        <td className="py-2.5" style={{ color: TIER_COLOR[r.tier] }}>{TIER_LABEL[r.tier]}</td>
-                        <td className="py-2.5 text-right font-mono text-gray-400">{(r.currentLr * 100).toFixed(1)}%</td>
-                        <td className="py-2.5 text-right font-mono text-amber-400">×{CITIES.find(c => c.name === r.name)!.monsoonMult}</td>
+                        className={r.stress_lr > 0.85 ? 'bg-red-500/5' : ''}>
+                        <td className="py-2.5 font-medium text-white/80">{r.city}</td>
+                        <td className="py-2.5" style={{ color: tierColor }}>{tierLabel}</td>
+                        <td className="py-2.5 text-right font-mono text-gray-400">{(r.current_lr * 100).toFixed(1)}%</td>
+                        <td className="py-2.5 text-right font-mono text-amber-400">×{r.monsoon_multiplier}</td>
                         <td className="py-2.5 text-right font-mono font-bold" style={{ color: stressColor }}>
-                          {(r.stressLr * 100).toFixed(1)}%
+                          {(r.stress_lr * 100).toFixed(1)}%
                         </td>
                         <td className="py-2.5 text-center">
-                          {r.stressLr > 0.85 ? (
+                          {r.stress_lr > 0.85 ? (
                             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/30">
-                              {r.wouldFlip ? '🆕 SUSPEND' : '🚨 CRITICAL'}
+                              {r.would_flip_to_suspended ? '🆕 SUSPEND' : '🚨 CRITICAL'}
                             </span>
                           ) : (
                             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400">
-                              {STATUS_CFG[r.stressStatus].label}
+                              {STATUS_CFG[getStatus(r.stress_lr)].label}
                             </span>
                           )}
                         </td>
@@ -474,18 +402,93 @@ function StressTestPanel() {
 
 // ─── Main Page ─────────────────────────────────────────────────────
 export default function ActuarialDashboard() {
+  const [cities, setCities] = useState<CityData[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
+  const [trendLoading, setTrendLoading] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
 
-  const suspendedCities = CITIES.filter(c => c.status === 'critical');
-  const watchCities     = CITIES.filter(c => c.status === 'watch');
-  const selectedData    = CITIES.find(c => c.name === selectedCity) ?? null;
+  const fetchCities = async () => {
+    setDataLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/admin/actuarial`);
+      const data = await res.json();
+      const all: any[] = [
+        ...(data.tier_breakdown?.tier_1 || []),
+        ...(data.tier_breakdown?.tier_2 || []),
+        ...(data.tier_breakdown?.tier_3 || []),
+      ];
+      const mapped: CityData[] = all.map(c => ({
+        name: c.city,
+        state: STATE_MAP[c.city] || c.city,
+        tier: (c.city_tier as Tier),
+        lr: c.avg_loss_ratio,
+        bcr: c.avg_bcr,
+        status: getStatus(c.avg_loss_ratio),
+        totalPremium: c.premium_collected,
+        totalPayout: c.total_payout,
+        totalClaims: c.total_claims,
+        monsoonMult: 1.5,
+        urbanPct: 70, semiUrbanPct: 20, ruralPct: 10,
+        trend: [],
+      }));
+      setCities(mapped.sort((a, b) => b.lr - a.lr));
+      setLastRefresh(new Date());
+    } catch {
+      // keep existing data on error
+    } finally {
+      setDataLoading(false);
+    }
+  };
 
-  const platformStatus = getStatus(PLATFORM_BCR);
+  useEffect(() => { fetchCities(); }, []);
+
+  const handleCityClick = async (cityName: string) => {
+    if (selectedCity === cityName) {
+      setSelectedCity(null);
+      return;
+    }
+    setSelectedCity(cityName);
+    setTrendLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/admin/actuarial/${encodeURIComponent(cityName)}`);
+      const data = await res.json();
+      const trend: WeekPoint[] = (data.weekly_trend || []).map((w: any, i: number) => ({
+        week: `W${i + 1}`,
+        lr: w.loss_ratio,
+        premium: Math.round(w.premium_collected),
+        payout: Math.round(w.total_payout),
+        claims: w.claims,
+      }));
+      const uv = data.urban_vs_rural || {};
+      setCities(prev => prev.map(c =>
+        c.name === cityName
+          ? { ...c, trend, urbanPct: uv.urban_pct ?? 70, semiUrbanPct: uv.semi_urban_pct ?? 20, ruralPct: uv.rural_pct ?? 10 }
+          : c
+      ));
+    } catch {
+      // keep empty trend
+    } finally {
+      setTrendLoading(false);
+    }
+  };
+
+  const selectedData = cities.find(c => c.name === selectedCity) ?? null;
+  const suspendedCities = cities.filter(c => c.status === 'critical');
+  const watchCities     = cities.filter(c => c.status === 'watch');
+
+  const platform = useMemo(() => ({
+    totalPremium: cities.reduce((s, c) => s + c.totalPremium, 0),
+    totalPayout:  cities.reduce((s, c) => s + c.totalPayout,  0),
+    totalClaims:  cities.reduce((s, c) => s + c.totalClaims,  0),
+  }), [cities]);
+  const platformBcr = platform.totalPremium > 0 ? platform.totalPayout / platform.totalPremium : 0;
+  const platformStatus = getStatus(platformBcr);
   const platCfg = STATUS_CFG[platformStatus];
 
-  const tier1 = CITIES.filter(c => c.tier === 'tier_1');
-  const tier2 = CITIES.filter(c => c.tier === 'tier_2');
-  const tier3 = CITIES.filter(c => c.tier === 'tier_3');
+  const tier1 = cities.filter(c => c.tier === 'tier_1');
+  const tier2 = cities.filter(c => c.tier === 'tier_2');
+  const tier3 = cities.filter(c => c.tier === 'tier_3');
 
   return (
     <div className="w-full max-w-7xl mx-auto p-4 md:p-6">
@@ -520,127 +523,102 @@ export default function ActuarialDashboard() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-white/90 mb-1.5">Actuarial Command Center</h1>
-            <p className="text-gray-400 text-sm">BCR · Loss Ratio · Sustainability monitoring across all 13 cities, 3 tiers</p>
+            <p className="text-gray-400 text-sm">BCR · Loss Ratio · Sustainability monitoring across all {cities.length} cities, 3 tiers</p>
           </div>
           <div className="flex items-center gap-3">
-            <div className="px-3 py-1.5 rounded-lg border text-xs font-mono font-bold"
-              style={{ color: platCfg.color, background: platCfg.bg, borderColor: platCfg.border }}>
-              Platform BCR: {(PLATFORM_BCR * 100).toFixed(1)}% — {platCfg.label}
-            </div>
-            <div className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-full text-xs font-mono text-[#10a37f] flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10a37f] opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#10a37f]" />
-              </span>
-              LIVE · 8-week window
-            </div>
+            {dataLoading ? (
+              <div className="px-3 py-1.5 rounded-lg border border-white/10 text-xs font-mono text-gray-400">Loading…</div>
+            ) : (
+              <div className="px-3 py-1.5 rounded-lg border text-xs font-mono font-bold"
+                style={{ color: platCfg.color, background: platCfg.bg, borderColor: platCfg.border }}>
+                Platform BCR: {(platformBcr * 100).toFixed(1)}% — {platCfg.label}
+              </div>
+            )}
+            <button
+              onClick={fetchCities}
+              disabled={dataLoading}
+              className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-full text-xs font-mono text-[#10a37f] flex items-center gap-2 hover:bg-white/10 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3 h-3 ${dataLoading ? 'animate-spin' : ''}`} />
+              {dataLoading ? 'Loading…' : `LIVE · ${lastRefresh.toLocaleTimeString()}`}
+            </button>
           </div>
         </div>
 
         {/* ── KPI Strip ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { icon: <Activity className="w-4 h-4" />, label: 'Platform BCR',     val: `${(PLATFORM_BCR * 100).toFixed(1)}%`, sub: 'Target: 55–70%',            color: platCfg.color },
-            { icon: <DollarSign className="w-4 h-4"/>, label: 'Total Premium Pool', val: `₹${(PLATFORM.totalPremium/100000).toFixed(1)}L`, sub: '8 weeks · 13,000 riders', color: '#10a37f' },
-            { icon: <TrendingUp className="w-4 h-4"/>, label: 'Total Claims Paid',  val: `₹${(PLATFORM.totalPayout/100000).toFixed(1)}L`,  sub: `${PLATFORM.totalClaims.toLocaleString()} claims settled`, color: '#0ea5e9' },
-            { icon: <AlertTriangle className="w-4 h-4"/>, label: 'Cities at Risk',  val: `${suspendedCities.length + watchCities.length}`,      sub: `${suspendedCities.length} suspended · ${watchCities.length} on watch`, color: '#f59e0b' },
+            { icon: <Activity className="w-4 h-4" />, label: 'Platform BCR',        val: `${(platformBcr * 100).toFixed(1)}%`,               sub: 'Target: 55–70%',                             color: platCfg.color },
+            { icon: <DollarSign className="w-4 h-4"/>, label: 'Total Premium Pool', val: `₹${(platform.totalPremium/100000).toFixed(1)}L`,    sub: `8 weeks · ${cities.length * 1000} riders`,  color: '#10a37f' },
+            { icon: <TrendingUp className="w-4 h-4"/>, label: 'Total Claims Paid',  val: `₹${(platform.totalPayout/100000).toFixed(1)}L`,     sub: `${platform.totalClaims.toLocaleString()} claims settled`, color: '#0ea5e9' },
+            { icon: <AlertTriangle className="w-4 h-4"/>, label: 'Cities at Risk',  val: `${suspendedCities.length + watchCities.length}`,     sub: `${suspendedCities.length} suspended · ${watchCities.length} on watch`, color: '#f59e0b' },
           ].map((k, i) => (
             <motion.div key={k.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.07 }}
               className="glass-panel p-5 flex flex-col gap-3">
               <div className="flex items-center gap-2" style={{ color: k.color }}>
                 {k.icon}
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{k.label}</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">{k.label}</span>
               </div>
               <div>
-                <p className="text-3xl font-bold tracking-tighter" style={{ color: k.color }}>{k.val}</p>
-                <p className="text-xs text-gray-500 mt-1">{k.sub}</p>
+                <p className="text-2xl font-bold font-mono" style={{ color: k.color }}>
+                  {dataLoading ? '—' : k.val}
+                </p>
+                <p className="text-[11px] text-gray-500 mt-1">{k.sub}</p>
               </div>
             </motion.div>
           ))}
         </div>
 
-        {/* ── BCR Zone Legend ── */}
-        <div className="glass-panel px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
-          <span className="text-gray-500 font-medium uppercase tracking-wider text-[10px]">BCR Health Zones:</span>
-          {(Object.entries(STATUS_CFG) as [HealthStatus, typeof STATUS_CFG[HealthStatus]][]).map(([k, v]) => (
-            <div key={k} className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full" style={{ background: v.color }} />
-              <span style={{ color: v.color }} className="font-medium">{v.label}</span>
-              <span className="text-gray-600">
-                {k === 'healthy' ? '≤55%' : k === 'optimal' ? '55–70%' : k === 'watch' ? '70–85%' : '>85%'}
-              </span>
+        {/* ── City Grids ── */}
+        {dataLoading ? (
+          <div className="text-center py-20 text-gray-500">Loading actuarial data from backend…</div>
+        ) : (
+          [
+            { label: 'Tier 1 — Metro Cities', cities: tier1, color: TIER_COLOR['tier_1'] },
+            { label: 'Tier 2 — Major Cities', cities: tier2, color: TIER_COLOR['tier_2'] },
+            { label: 'Tier 3 — Emerging Cities', cities: tier3, color: TIER_COLOR['tier_3'] },
+          ].map(group => group.cities.length > 0 && (
+            <div key={group.label}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="h-px flex-1 bg-white/5" />
+                <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: group.color }}>
+                  {group.label}
+                </span>
+                <div className="h-px flex-1 bg-white/5" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                {group.cities.map(city => (
+                  <div key={city.name}>
+                    <CityCard
+                      city={city}
+                      selected={selectedCity === city.name}
+                      onClick={() => handleCityClick(city.name)}
+                    />
+                    <AnimatePresence>
+                      {selectedCity === city.name && selectedData && (
+                        <DetailPanel
+                          city={selectedData}
+                          trendLoading={trendLoading}
+                          onClose={() => setSelectedCity(null)}
+                        />
+                      )}
+                    </AnimatePresence>
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
-
-        {/* ── Tier 1 Grid ── */}
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#a78bfa]" /> Tier 1 — Metro Cities
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            {tier1.map(c => (
-              <CityCard key={c.name} city={c} selected={selectedCity === c.name}
-                onClick={() => setSelectedCity(selectedCity === c.name ? null : c.name)} />
-            ))}
-          </div>
-        </div>
-
-        {/* Detail panel (Tier 1 selection) */}
-        <AnimatePresence>
-          {selectedData && selectedData.tier === 'tier_1' && (
-            <DetailPanel key={selectedData.name} city={selectedData} onClose={() => setSelectedCity(null)} />
-          )}
-        </AnimatePresence>
-
-        {/* ── Tier 2 Grid ── */}
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#60a5fa]" /> Tier 2 — Major Cities
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {tier2.map(c => (
-              <CityCard key={c.name} city={c} selected={selectedCity === c.name}
-                onClick={() => setSelectedCity(selectedCity === c.name ? null : c.name)} />
-            ))}
-          </div>
-        </div>
-
-        <AnimatePresence>
-          {selectedData && selectedData.tier === 'tier_2' && (
-            <DetailPanel key={selectedData.name} city={selectedData} onClose={() => setSelectedCity(null)} />
-          )}
-        </AnimatePresence>
-
-        {/* ── Tier 3 Grid ── */}
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#34d399]" /> Tier 3 — Emerging Cities
-            <ChevronRight className="w-3 h-3 text-gray-600" />
-            <span className="text-gray-600 normal-case font-normal">Lower premiums, higher seasonal flood risk</span>
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {tier3.map(c => (
-              <CityCard key={c.name} city={c} selected={selectedCity === c.name}
-                onClick={() => setSelectedCity(selectedCity === c.name ? null : c.name)} />
-            ))}
-          </div>
-        </div>
-
-        <AnimatePresence>
-          {selectedData && selectedData.tier === 'tier_3' && (
-            <DetailPanel key={selectedData.name} city={selectedData} onClose={() => setSelectedCity(null)} />
-          )}
-        </AnimatePresence>
+          ))
+        )}
 
         {/* ── Stress Test ── */}
+        <div className="flex items-center gap-3 mt-4">
+          <ChevronRight className="w-4 h-4 text-amber-400" />
+          <span className="text-xs font-semibold text-amber-400 uppercase tracking-widest">Stress Testing</span>
+          <div className="h-px flex-1 bg-white/5" />
+        </div>
         <StressTestPanel />
 
-        {/* ── Footer note ── */}
-        <p className="text-[11px] text-gray-600 text-center">
-          BCR target range: 0.55–0.70 · Enrolment suspension triggers at LR &gt; 0.85 · Data: 8-week rolling window · 13,000 riders across 13 cities
-        </p>
       </motion.div>
     </div>
   );

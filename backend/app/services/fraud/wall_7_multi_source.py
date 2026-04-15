@@ -8,10 +8,10 @@ from app.models.models import Rider, RiderActivity, TriggerReading
 from app.services import mock_external
 
 TRIGGER_THRESHOLDS = {
-    "rainfall_mm": 64.5,
-    "temperature_c": 40.0,
+    "rainfall_mm": 65.0,
+    "temperature_c": 44.0,
     "visibility_m": 500,
-    "aqi": 200,
+    "aqi": 500,
     "traffic_speed_kmh": 10.0,
 }
 MIN_SOURCES = 2

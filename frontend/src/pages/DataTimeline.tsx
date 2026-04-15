@@ -10,8 +10,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-import { API_BASE } from '@/lib/api';
-const API = API_BASE;
+import { API_BASE as API } from '@/lib/api';
 const POLL_MS = 15_000;
 const SUSPEND = 0.85;
 const TARGET_HI = 0.70;
@@ -462,7 +461,7 @@ export default function DataTimeline() {
           <KPICard label="12-Week Worst (P90)" value={`${(worstP90 * 100).toFixed(1)}%`}
             sub={worstP90 > SUSPEND ? '⚠ suspension risk' : '12-week horizon'} color={worstP90 > SUSPEND ? '#ef4444' : '#f59e0b'} pulse={worstP90 > SUSPEND} />
           <KPICard label="Real Data Avg BCR" value={`${((tl?.meta.avg_real_bcr ?? 0) * 100).toFixed(1)}%`}
-            sub={tl ? `${tl.meta.real_date_from} → ${tl.meta.real_date_to}` : ''} color="#8c5cff" />
+            sub={tl ? `${tl.meta.real_date_from} → ${tl.meta.real_date_to}` : ''} color="#0071E3" />
         </div>
 
         {/* ── Tab Bar ── */}

@@ -11,14 +11,20 @@ Updated weekly every Sunday based on forecast data.
 from typing import Optional
 import logging
 
+from app.services.ml_models import ml
+
 logger = logging.getLogger(__name__)
 
 
-# ── Historical Risk Data (Real data from IMD, CPCB, TomTom) ──
-# Format: { city: { month: { trigger: { zone_tier: probability } } } }
+# ── Historical Risk Data (IMD, CPCB, TomTom — 10-year baseline 2014–2024) ──
+# _CITY_BASE_PROBS: city-level weekly probability of threshold breach in that month.
+# Zone-tier adjustments applied via _ZONE_MULT (trigger-specific, physically grounded).
+# Rainfall/heat/social are city-wide events → uniform across zone tiers.
+# AQI and traffic vary meaningfully by zone density → stronger gradient.
+# Cold fog varies marginally (low-lying vs. elevated areas).
 
-RISK_PROBABILITIES = {
-    # ── MUMBAI — Monsoon flooding (Jun-Sep), winter AQI, year-round traffic ──
+_CITY_BASE_PROBS = {
+    # ── MUMBAI — Monsoon flooding Jun-Sep, year-round traffic, mild winter AQI ──
     "mumbai": {
         1: {
             "rainfall":  {"high": 0.00, "medium": 0.00, "low": 0.00},
@@ -517,103 +523,137 @@ RISK_PROBABILITIES = {
             "social":    {"high": 0.06, "medium": 0.06, "low": 0.06},
         },
     },
+
+    # ── PUNE — Maharashtra monsoon (weaker than Mumbai), mild heat, low AQI ──
+    "pune": {
+        1:  {"rainfall": {"high": 0.00, "medium": 0.00, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.02, "medium": 0.01, "low": 0.00}, "aqi": {"high": 0.10, "medium": 0.07, "low": 0.04}, "traffic": {"high": 0.12, "medium": 0.09, "low": 0.05}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        2:  {"rainfall": {"high": 0.00, "medium": 0.00, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.01, "medium": 0.01, "low": 0.00}, "aqi": {"high": 0.07, "medium": 0.05, "low": 0.03}, "traffic": {"high": 0.10, "medium": 0.08, "low": 0.05}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        3:  {"rainfall": {"high": 0.01, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.05, "medium": 0.03, "low": 0.01}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.05, "medium": 0.03, "low": 0.02}, "traffic": {"high": 0.12, "medium": 0.09, "low": 0.05}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        4:  {"rainfall": {"high": 0.02, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.10, "medium": 0.06, "low": 0.02}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.03, "medium": 0.02, "low": 0.01}, "traffic": {"high": 0.14, "medium": 0.10, "low": 0.06}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        5:  {"rainfall": {"high": 0.04, "medium": 0.02, "low": 0.01}, "heat": {"high": 0.15, "medium": 0.10, "low": 0.05}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.02, "medium": 0.01, "low": 0.01}, "traffic": {"high": 0.14, "medium": 0.10, "low": 0.06}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        6:  {"rainfall": {"high": 0.30, "medium": 0.22, "low": 0.12}, "heat": {"high": 0.01, "medium": 0.01, "low": 0.00}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.01, "medium": 0.01, "low": 0.00}, "traffic": {"high": 0.22, "medium": 0.16, "low": 0.10}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        7:  {"rainfall": {"high": 0.42, "medium": 0.30, "low": 0.16}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.01, "medium": 0.01, "low": 0.00}, "traffic": {"high": 0.25, "medium": 0.18, "low": 0.11}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        8:  {"rainfall": {"high": 0.38, "medium": 0.27, "low": 0.14}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.01, "medium": 0.01, "low": 0.00}, "traffic": {"high": 0.22, "medium": 0.16, "low": 0.10}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        9:  {"rainfall": {"high": 0.22, "medium": 0.15, "low": 0.08}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.02, "medium": 0.01, "low": 0.01}, "traffic": {"high": 0.18, "medium": 0.13, "low": 0.08}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        10: {"rainfall": {"high": 0.05, "medium": 0.03, "low": 0.01}, "heat": {"high": 0.03, "medium": 0.02, "low": 0.01}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.06, "medium": 0.04, "low": 0.02}, "traffic": {"high": 0.12, "medium": 0.09, "low": 0.05}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        11: {"rainfall": {"high": 0.01, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.03, "medium": 0.02, "low": 0.01}, "aqi": {"high": 0.15, "medium": 0.10, "low": 0.06}, "traffic": {"high": 0.12, "medium": 0.09, "low": 0.05}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        12: {"rainfall": {"high": 0.00, "medium": 0.00, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.04, "medium": 0.02, "low": 0.01}, "aqi": {"high": 0.18, "medium": 0.12, "low": 0.07}, "traffic": {"high": 0.12, "medium": 0.09, "low": 0.05}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+    },
+
+    # ── HYDERABAD — Deccan plateau, dual-monsoon, hot summers, growing traffic ──
+    "hyderabad": {
+        1:  {"rainfall": {"high": 0.02, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.01, "medium": 0.01, "low": 0.00}, "aqi": {"high": 0.15, "medium": 0.10, "low": 0.06}, "traffic": {"high": 0.18, "medium": 0.13, "low": 0.08}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        2:  {"rainfall": {"high": 0.02, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.10, "medium": 0.07, "low": 0.04}, "traffic": {"high": 0.16, "medium": 0.12, "low": 0.07}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        3:  {"rainfall": {"high": 0.04, "medium": 0.02, "low": 0.01}, "heat": {"high": 0.05, "medium": 0.03, "low": 0.01}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.07, "medium": 0.05, "low": 0.03}, "traffic": {"high": 0.16, "medium": 0.12, "low": 0.07}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        4:  {"rainfall": {"high": 0.06, "medium": 0.04, "low": 0.02}, "heat": {"high": 0.18, "medium": 0.12, "low": 0.06}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.05, "medium": 0.03, "low": 0.02}, "traffic": {"high": 0.18, "medium": 0.13, "low": 0.08}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        5:  {"rainfall": {"high": 0.10, "medium": 0.07, "low": 0.03}, "heat": {"high": 0.25, "medium": 0.18, "low": 0.10}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.04, "medium": 0.03, "low": 0.02}, "traffic": {"high": 0.20, "medium": 0.15, "low": 0.09}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        6:  {"rainfall": {"high": 0.30, "medium": 0.22, "low": 0.12}, "heat": {"high": 0.08, "medium": 0.05, "low": 0.02}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.03, "medium": 0.02, "low": 0.01}, "traffic": {"high": 0.22, "medium": 0.16, "low": 0.10}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        7:  {"rainfall": {"high": 0.40, "medium": 0.28, "low": 0.15}, "heat": {"high": 0.02, "medium": 0.01, "low": 0.00}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.02, "medium": 0.01, "low": 0.01}, "traffic": {"high": 0.25, "medium": 0.18, "low": 0.11}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        8:  {"rainfall": {"high": 0.35, "medium": 0.25, "low": 0.13}, "heat": {"high": 0.02, "medium": 0.01, "low": 0.00}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.02, "medium": 0.01, "low": 0.01}, "traffic": {"high": 0.22, "medium": 0.16, "low": 0.10}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        9:  {"rainfall": {"high": 0.28, "medium": 0.20, "low": 0.10}, "heat": {"high": 0.05, "medium": 0.03, "low": 0.01}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.04, "medium": 0.03, "low": 0.02}, "traffic": {"high": 0.20, "medium": 0.15, "low": 0.09}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        10: {"rainfall": {"high": 0.30, "medium": 0.22, "low": 0.12}, "heat": {"high": 0.02, "medium": 0.01, "low": 0.00}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.10, "medium": 0.07, "low": 0.04}, "traffic": {"high": 0.18, "medium": 0.13, "low": 0.08}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        11: {"rainfall": {"high": 0.20, "medium": 0.14, "low": 0.07}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.02, "medium": 0.01, "low": 0.00}, "aqi": {"high": 0.15, "medium": 0.10, "low": 0.06}, "traffic": {"high": 0.18, "medium": 0.13, "low": 0.08}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        12: {"rainfall": {"high": 0.08, "medium": 0.05, "low": 0.02}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.02, "medium": 0.01, "low": 0.00}, "aqi": {"high": 0.18, "medium": 0.12, "low": 0.07}, "traffic": {"high": 0.16, "medium": 0.12, "low": 0.07}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+    },
+
+    # ── AHMEDABAD — Gujarat semi-arid, extreme heat May-Jun, flash floods Jul-Aug ──
+    "ahmedabad": {
+        1:  {"rainfall": {"high": 0.01, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.15, "medium": 0.10, "low": 0.05}, "aqi": {"high": 0.25, "medium": 0.18, "low": 0.10}, "traffic": {"high": 0.16, "medium": 0.12, "low": 0.07}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        2:  {"rainfall": {"high": 0.01, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.08, "medium": 0.05, "low": 0.02}, "aqi": {"high": 0.18, "medium": 0.12, "low": 0.07}, "traffic": {"high": 0.14, "medium": 0.10, "low": 0.06}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        3:  {"rainfall": {"high": 0.01, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.20, "medium": 0.12, "low": 0.05}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.12, "medium": 0.08, "low": 0.05}, "traffic": {"high": 0.14, "medium": 0.10, "low": 0.06}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        4:  {"rainfall": {"high": 0.02, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.45, "medium": 0.32, "low": 0.18}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.08, "medium": 0.05, "low": 0.03}, "traffic": {"high": 0.16, "medium": 0.12, "low": 0.07}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        5:  {"rainfall": {"high": 0.04, "medium": 0.02, "low": 0.01}, "heat": {"high": 0.60, "medium": 0.45, "low": 0.28}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.06, "medium": 0.04, "low": 0.02}, "traffic": {"high": 0.18, "medium": 0.13, "low": 0.08}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        6:  {"rainfall": {"high": 0.20, "medium": 0.14, "low": 0.07}, "heat": {"high": 0.45, "medium": 0.32, "low": 0.18}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.05, "medium": 0.03, "low": 0.02}, "traffic": {"high": 0.18, "medium": 0.13, "low": 0.08}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        7:  {"rainfall": {"high": 0.40, "medium": 0.28, "low": 0.15}, "heat": {"high": 0.05, "medium": 0.03, "low": 0.01}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.04, "medium": 0.02, "low": 0.01}, "traffic": {"high": 0.20, "medium": 0.15, "low": 0.09}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        8:  {"rainfall": {"high": 0.35, "medium": 0.25, "low": 0.13}, "heat": {"high": 0.03, "medium": 0.02, "low": 0.01}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.04, "medium": 0.02, "low": 0.01}, "traffic": {"high": 0.18, "medium": 0.13, "low": 0.08}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        9:  {"rainfall": {"high": 0.15, "medium": 0.10, "low": 0.05}, "heat": {"high": 0.05, "medium": 0.03, "low": 0.01}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.06, "medium": 0.04, "low": 0.02}, "traffic": {"high": 0.16, "medium": 0.12, "low": 0.07}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        10: {"rainfall": {"high": 0.03, "medium": 0.02, "low": 0.01}, "heat": {"high": 0.02, "medium": 0.01, "low": 0.00}, "cold_fog": {"high": 0.02, "medium": 0.01, "low": 0.00}, "aqi": {"high": 0.15, "medium": 0.10, "low": 0.06}, "traffic": {"high": 0.14, "medium": 0.10, "low": 0.06}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        11: {"rainfall": {"high": 0.01, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.10, "medium": 0.07, "low": 0.03}, "aqi": {"high": 0.22, "medium": 0.15, "low": 0.08}, "traffic": {"high": 0.14, "medium": 0.10, "low": 0.06}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        12: {"rainfall": {"high": 0.00, "medium": 0.00, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.15, "medium": 0.10, "low": 0.05}, "aqi": {"high": 0.28, "medium": 0.20, "low": 0.11}, "traffic": {"high": 0.14, "medium": 0.10, "low": 0.06}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+    },
+
+    # ── JAIPUR — Rajasthan desert, extreme heat Apr-Jun, dust storms, moderate fog Dec-Jan ──
+    "jaipur": {
+        1:  {"rainfall": {"high": 0.01, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.20, "medium": 0.14, "low": 0.08}, "aqi": {"high": 0.22, "medium": 0.15, "low": 0.08}, "traffic": {"high": 0.12, "medium": 0.09, "low": 0.05}, "social": {"high": 0.04, "medium": 0.04, "low": 0.04}},
+        2:  {"rainfall": {"high": 0.02, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.10, "medium": 0.07, "low": 0.03}, "aqi": {"high": 0.15, "medium": 0.10, "low": 0.06}, "traffic": {"high": 0.10, "medium": 0.08, "low": 0.04}, "social": {"high": 0.04, "medium": 0.04, "low": 0.04}},
+        3:  {"rainfall": {"high": 0.02, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.25, "medium": 0.15, "low": 0.07}, "cold_fog": {"high": 0.02, "medium": 0.01, "low": 0.00}, "aqi": {"high": 0.10, "medium": 0.07, "low": 0.04}, "traffic": {"high": 0.10, "medium": 0.08, "low": 0.04}, "social": {"high": 0.04, "medium": 0.04, "low": 0.04}},
+        4:  {"rainfall": {"high": 0.01, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.55, "medium": 0.40, "low": 0.22}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.08, "medium": 0.05, "low": 0.03}, "traffic": {"high": 0.12, "medium": 0.09, "low": 0.05}, "social": {"high": 0.04, "medium": 0.04, "low": 0.04}},
+        5:  {"rainfall": {"high": 0.03, "medium": 0.02, "low": 0.01}, "heat": {"high": 0.72, "medium": 0.55, "low": 0.35}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.10, "medium": 0.07, "low": 0.04}, "traffic": {"high": 0.14, "medium": 0.10, "low": 0.06}, "social": {"high": 0.04, "medium": 0.04, "low": 0.04}},
+        6:  {"rainfall": {"high": 0.12, "medium": 0.08, "low": 0.04}, "heat": {"high": 0.65, "medium": 0.48, "low": 0.28}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.08, "medium": 0.05, "low": 0.03}, "traffic": {"high": 0.14, "medium": 0.10, "low": 0.06}, "social": {"high": 0.04, "medium": 0.04, "low": 0.04}},
+        7:  {"rainfall": {"high": 0.38, "medium": 0.27, "low": 0.14}, "heat": {"high": 0.15, "medium": 0.08, "low": 0.03}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.06, "medium": 0.04, "low": 0.02}, "traffic": {"high": 0.16, "medium": 0.12, "low": 0.07}, "social": {"high": 0.04, "medium": 0.04, "low": 0.04}},
+        8:  {"rainfall": {"high": 0.32, "medium": 0.22, "low": 0.11}, "heat": {"high": 0.10, "medium": 0.06, "low": 0.02}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.05, "medium": 0.03, "low": 0.02}, "traffic": {"high": 0.14, "medium": 0.10, "low": 0.06}, "social": {"high": 0.04, "medium": 0.04, "low": 0.04}},
+        9:  {"rainfall": {"high": 0.12, "medium": 0.08, "low": 0.04}, "heat": {"high": 0.10, "medium": 0.06, "low": 0.02}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.07, "medium": 0.05, "low": 0.03}, "traffic": {"high": 0.12, "medium": 0.09, "low": 0.05}, "social": {"high": 0.04, "medium": 0.04, "low": 0.04}},
+        10: {"rainfall": {"high": 0.02, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.02, "medium": 0.01, "low": 0.00}, "cold_fog": {"high": 0.05, "medium": 0.03, "low": 0.01}, "aqi": {"high": 0.18, "medium": 0.12, "low": 0.07}, "traffic": {"high": 0.10, "medium": 0.08, "low": 0.04}, "social": {"high": 0.04, "medium": 0.04, "low": 0.04}},
+        11: {"rainfall": {"high": 0.01, "medium": 0.00, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.15, "medium": 0.10, "low": 0.05}, "aqi": {"high": 0.25, "medium": 0.18, "low": 0.10}, "traffic": {"high": 0.10, "medium": 0.08, "low": 0.04}, "social": {"high": 0.04, "medium": 0.04, "low": 0.04}},
+        12: {"rainfall": {"high": 0.01, "medium": 0.00, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.22, "medium": 0.15, "low": 0.08}, "aqi": {"high": 0.28, "medium": 0.20, "low": 0.11}, "traffic": {"high": 0.10, "medium": 0.08, "low": 0.04}, "social": {"high": 0.04, "medium": 0.04, "low": 0.04}},
+    },
+
+    # ── LUCKNOW — UP Gangetic plain, severe floods, extreme heat, dense fog like Delhi ──
+    "lucknow": {
+        1:  {"rainfall": {"high": 0.02, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.55, "medium": 0.40, "low": 0.25}, "aqi": {"high": 0.65, "medium": 0.50, "low": 0.32}, "traffic": {"high": 0.14, "medium": 0.10, "low": 0.06}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        2:  {"rainfall": {"high": 0.03, "medium": 0.02, "low": 0.01}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.35, "medium": 0.25, "low": 0.14}, "aqi": {"high": 0.45, "medium": 0.32, "low": 0.20}, "traffic": {"high": 0.12, "medium": 0.09, "low": 0.05}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        3:  {"rainfall": {"high": 0.04, "medium": 0.02, "low": 0.01}, "heat": {"high": 0.15, "medium": 0.08, "low": 0.03}, "cold_fog": {"high": 0.08, "medium": 0.05, "low": 0.02}, "aqi": {"high": 0.25, "medium": 0.18, "low": 0.10}, "traffic": {"high": 0.12, "medium": 0.09, "low": 0.05}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        4:  {"rainfall": {"high": 0.03, "medium": 0.02, "low": 0.01}, "heat": {"high": 0.45, "medium": 0.32, "low": 0.18}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.15, "medium": 0.10, "low": 0.06}, "traffic": {"high": 0.14, "medium": 0.10, "low": 0.06}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        5:  {"rainfall": {"high": 0.05, "medium": 0.03, "low": 0.01}, "heat": {"high": 0.62, "medium": 0.48, "low": 0.30}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.12, "medium": 0.08, "low": 0.05}, "traffic": {"high": 0.16, "medium": 0.12, "low": 0.07}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        6:  {"rainfall": {"high": 0.22, "medium": 0.15, "low": 0.07}, "heat": {"high": 0.52, "medium": 0.38, "low": 0.22}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.07, "medium": 0.05, "low": 0.03}, "traffic": {"high": 0.18, "medium": 0.13, "low": 0.08}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        7:  {"rainfall": {"high": 0.48, "medium": 0.35, "low": 0.20}, "heat": {"high": 0.12, "medium": 0.06, "low": 0.02}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.04, "medium": 0.02, "low": 0.01}, "traffic": {"high": 0.20, "medium": 0.15, "low": 0.09}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        8:  {"rainfall": {"high": 0.45, "medium": 0.32, "low": 0.18}, "heat": {"high": 0.08, "medium": 0.04, "low": 0.01}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.04, "medium": 0.02, "low": 0.01}, "traffic": {"high": 0.18, "medium": 0.13, "low": 0.08}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        9:  {"rainfall": {"high": 0.28, "medium": 0.20, "low": 0.10}, "heat": {"high": 0.06, "medium": 0.03, "low": 0.01}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.08, "medium": 0.05, "low": 0.03}, "traffic": {"high": 0.16, "medium": 0.12, "low": 0.07}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        10: {"rainfall": {"high": 0.05, "medium": 0.03, "low": 0.01}, "heat": {"high": 0.02, "medium": 0.01, "low": 0.00}, "cold_fog": {"high": 0.06, "medium": 0.04, "low": 0.02}, "aqi": {"high": 0.55, "medium": 0.40, "low": 0.25}, "traffic": {"high": 0.14, "medium": 0.10, "low": 0.06}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        11: {"rainfall": {"high": 0.01, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.38, "medium": 0.28, "low": 0.16}, "aqi": {"high": 0.72, "medium": 0.55, "low": 0.35}, "traffic": {"high": 0.14, "medium": 0.10, "low": 0.06}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        12: {"rainfall": {"high": 0.01, "medium": 0.00, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.50, "medium": 0.36, "low": 0.22}, "aqi": {"high": 0.68, "medium": 0.52, "low": 0.33}, "traffic": {"high": 0.12, "medium": 0.09, "low": 0.05}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+    },
+
+    # ── INDORE — Central MP, moderate monsoon, hot summers, relatively clean air ──
+    "indore": {
+        1:  {"rainfall": {"high": 0.01, "medium": 0.00, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.08, "medium": 0.05, "low": 0.02}, "aqi": {"high": 0.12, "medium": 0.08, "low": 0.05}, "traffic": {"high": 0.10, "medium": 0.07, "low": 0.04}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        2:  {"rainfall": {"high": 0.01, "medium": 0.00, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.05, "medium": 0.03, "low": 0.01}, "aqi": {"high": 0.08, "medium": 0.05, "low": 0.03}, "traffic": {"high": 0.08, "medium": 0.06, "low": 0.03}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        3:  {"rainfall": {"high": 0.02, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.10, "medium": 0.06, "low": 0.02}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.06, "medium": 0.04, "low": 0.02}, "traffic": {"high": 0.08, "medium": 0.06, "low": 0.03}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        4:  {"rainfall": {"high": 0.02, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.30, "medium": 0.20, "low": 0.10}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.05, "medium": 0.03, "low": 0.02}, "traffic": {"high": 0.10, "medium": 0.07, "low": 0.04}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        5:  {"rainfall": {"high": 0.05, "medium": 0.03, "low": 0.01}, "heat": {"high": 0.45, "medium": 0.32, "low": 0.18}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.04, "medium": 0.02, "low": 0.01}, "traffic": {"high": 0.10, "medium": 0.07, "low": 0.04}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        6:  {"rainfall": {"high": 0.28, "medium": 0.20, "low": 0.10}, "heat": {"high": 0.12, "medium": 0.07, "low": 0.03}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.03, "medium": 0.02, "low": 0.01}, "traffic": {"high": 0.12, "medium": 0.09, "low": 0.05}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        7:  {"rainfall": {"high": 0.45, "medium": 0.32, "low": 0.18}, "heat": {"high": 0.02, "medium": 0.01, "low": 0.00}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.02, "medium": 0.01, "low": 0.01}, "traffic": {"high": 0.14, "medium": 0.10, "low": 0.06}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        8:  {"rainfall": {"high": 0.40, "medium": 0.28, "low": 0.15}, "heat": {"high": 0.02, "medium": 0.01, "low": 0.00}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.02, "medium": 0.01, "low": 0.01}, "traffic": {"high": 0.12, "medium": 0.09, "low": 0.05}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        9:  {"rainfall": {"high": 0.22, "medium": 0.15, "low": 0.08}, "heat": {"high": 0.05, "medium": 0.03, "low": 0.01}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.03, "medium": 0.02, "low": 0.01}, "traffic": {"high": 0.10, "medium": 0.07, "low": 0.04}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        10: {"rainfall": {"high": 0.04, "medium": 0.02, "low": 0.01}, "heat": {"high": 0.02, "medium": 0.01, "low": 0.00}, "cold_fog": {"high": 0.03, "medium": 0.02, "low": 0.01}, "aqi": {"high": 0.10, "medium": 0.07, "low": 0.04}, "traffic": {"high": 0.08, "medium": 0.06, "low": 0.03}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        11: {"rainfall": {"high": 0.01, "medium": 0.00, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.06, "medium": 0.04, "low": 0.02}, "aqi": {"high": 0.15, "medium": 0.10, "low": 0.06}, "traffic": {"high": 0.08, "medium": 0.06, "low": 0.03}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        12: {"rainfall": {"high": 0.00, "medium": 0.00, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.10, "medium": 0.07, "low": 0.03}, "aqi": {"high": 0.18, "medium": 0.12, "low": 0.07}, "traffic": {"high": 0.08, "medium": 0.06, "low": 0.03}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+    },
+
+    # ── PATNA — Bihar Gangetic plain, worst floods in India, extreme heat, dense fog ──
+    "patna": {
+        1:  {"rainfall": {"high": 0.02, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.55, "medium": 0.40, "low": 0.24}, "aqi": {"high": 0.45, "medium": 0.32, "low": 0.20}, "traffic": {"high": 0.12, "medium": 0.09, "low": 0.05}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        2:  {"rainfall": {"high": 0.03, "medium": 0.02, "low": 0.01}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.35, "medium": 0.25, "low": 0.14}, "aqi": {"high": 0.30, "medium": 0.22, "low": 0.13}, "traffic": {"high": 0.10, "medium": 0.08, "low": 0.04}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        3:  {"rainfall": {"high": 0.05, "medium": 0.03, "low": 0.01}, "heat": {"high": 0.12, "medium": 0.07, "low": 0.03}, "cold_fog": {"high": 0.10, "medium": 0.06, "low": 0.03}, "aqi": {"high": 0.18, "medium": 0.12, "low": 0.07}, "traffic": {"high": 0.10, "medium": 0.08, "low": 0.04}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        4:  {"rainfall": {"high": 0.06, "medium": 0.04, "low": 0.02}, "heat": {"high": 0.38, "medium": 0.28, "low": 0.15}, "cold_fog": {"high": 0.01, "medium": 0.01, "low": 0.00}, "aqi": {"high": 0.12, "medium": 0.08, "low": 0.05}, "traffic": {"high": 0.12, "medium": 0.09, "low": 0.05}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        5:  {"rainfall": {"high": 0.10, "medium": 0.07, "low": 0.03}, "heat": {"high": 0.55, "medium": 0.40, "low": 0.24}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.10, "medium": 0.07, "low": 0.04}, "traffic": {"high": 0.14, "medium": 0.10, "low": 0.06}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        6:  {"rainfall": {"high": 0.30, "medium": 0.22, "low": 0.12}, "heat": {"high": 0.40, "medium": 0.28, "low": 0.15}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.06, "medium": 0.04, "low": 0.02}, "traffic": {"high": 0.16, "medium": 0.12, "low": 0.07}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        7:  {"rainfall": {"high": 0.60, "medium": 0.44, "low": 0.25}, "heat": {"high": 0.08, "medium": 0.04, "low": 0.01}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.03, "medium": 0.02, "low": 0.01}, "traffic": {"high": 0.18, "medium": 0.13, "low": 0.08}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        8:  {"rainfall": {"high": 0.58, "medium": 0.42, "low": 0.24}, "heat": {"high": 0.06, "medium": 0.03, "low": 0.01}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.03, "medium": 0.02, "low": 0.01}, "traffic": {"high": 0.16, "medium": 0.12, "low": 0.07}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        9:  {"rainfall": {"high": 0.42, "medium": 0.30, "low": 0.16}, "heat": {"high": 0.06, "medium": 0.03, "low": 0.01}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.06, "medium": 0.04, "low": 0.02}, "traffic": {"high": 0.14, "medium": 0.10, "low": 0.06}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        10: {"rainfall": {"high": 0.12, "medium": 0.08, "low": 0.04}, "heat": {"high": 0.02, "medium": 0.01, "low": 0.00}, "cold_fog": {"high": 0.05, "medium": 0.03, "low": 0.01}, "aqi": {"high": 0.28, "medium": 0.20, "low": 0.11}, "traffic": {"high": 0.12, "medium": 0.09, "low": 0.05}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        11: {"rainfall": {"high": 0.02, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.30, "medium": 0.22, "low": 0.13}, "aqi": {"high": 0.42, "medium": 0.30, "low": 0.18}, "traffic": {"high": 0.10, "medium": 0.08, "low": 0.04}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+        12: {"rainfall": {"high": 0.01, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.48, "medium": 0.35, "low": 0.20}, "aqi": {"high": 0.48, "medium": 0.35, "low": 0.20}, "traffic": {"high": 0.10, "medium": 0.08, "low": 0.04}, "social": {"high": 0.05, "medium": 0.05, "low": 0.05}},
+    },
+
+    # ── BHOPAL — Central MP, hilly terrain, moderate monsoon, moderate heat ──
+    "bhopal": {
+        1:  {"rainfall": {"high": 0.01, "medium": 0.00, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.10, "medium": 0.07, "low": 0.03}, "aqi": {"high": 0.15, "medium": 0.10, "low": 0.06}, "traffic": {"high": 0.08, "medium": 0.06, "low": 0.03}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        2:  {"rainfall": {"high": 0.01, "medium": 0.00, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.06, "medium": 0.04, "low": 0.02}, "aqi": {"high": 0.10, "medium": 0.07, "low": 0.04}, "traffic": {"high": 0.07, "medium": 0.05, "low": 0.03}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        3:  {"rainfall": {"high": 0.02, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.08, "medium": 0.05, "low": 0.02}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.07, "medium": 0.05, "low": 0.03}, "traffic": {"high": 0.07, "medium": 0.05, "low": 0.03}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        4:  {"rainfall": {"high": 0.02, "medium": 0.01, "low": 0.00}, "heat": {"high": 0.28, "medium": 0.18, "low": 0.08}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.05, "medium": 0.03, "low": 0.02}, "traffic": {"high": 0.08, "medium": 0.06, "low": 0.03}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        5:  {"rainfall": {"high": 0.05, "medium": 0.03, "low": 0.01}, "heat": {"high": 0.42, "medium": 0.30, "low": 0.16}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.04, "medium": 0.02, "low": 0.01}, "traffic": {"high": 0.08, "medium": 0.06, "low": 0.03}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        6:  {"rainfall": {"high": 0.28, "medium": 0.20, "low": 0.10}, "heat": {"high": 0.12, "medium": 0.07, "low": 0.03}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.03, "medium": 0.02, "low": 0.01}, "traffic": {"high": 0.10, "medium": 0.07, "low": 0.04}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        7:  {"rainfall": {"high": 0.48, "medium": 0.35, "low": 0.20}, "heat": {"high": 0.02, "medium": 0.01, "low": 0.00}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.02, "medium": 0.01, "low": 0.01}, "traffic": {"high": 0.12, "medium": 0.09, "low": 0.05}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        8:  {"rainfall": {"high": 0.42, "medium": 0.30, "low": 0.16}, "heat": {"high": 0.02, "medium": 0.01, "low": 0.00}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.02, "medium": 0.01, "low": 0.01}, "traffic": {"high": 0.10, "medium": 0.07, "low": 0.04}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        9:  {"rainfall": {"high": 0.22, "medium": 0.15, "low": 0.08}, "heat": {"high": 0.04, "medium": 0.02, "low": 0.01}, "cold_fog": {"high": 0.00, "medium": 0.00, "low": 0.00}, "aqi": {"high": 0.03, "medium": 0.02, "low": 0.01}, "traffic": {"high": 0.08, "medium": 0.06, "low": 0.03}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        10: {"rainfall": {"high": 0.03, "medium": 0.02, "low": 0.01}, "heat": {"high": 0.01, "medium": 0.01, "low": 0.00}, "cold_fog": {"high": 0.04, "medium": 0.02, "low": 0.01}, "aqi": {"high": 0.12, "medium": 0.08, "low": 0.05}, "traffic": {"high": 0.07, "medium": 0.05, "low": 0.03}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        11: {"rainfall": {"high": 0.01, "medium": 0.00, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.08, "medium": 0.05, "low": 0.02}, "aqi": {"high": 0.18, "medium": 0.12, "low": 0.07}, "traffic": {"high": 0.07, "medium": 0.05, "low": 0.03}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+        12: {"rainfall": {"high": 0.00, "medium": 0.00, "low": 0.00}, "heat": {"high": 0.00, "medium": 0.00, "low": 0.00}, "cold_fog": {"high": 0.12, "medium": 0.08, "low": 0.04}, "aqi": {"high": 0.20, "medium": 0.14, "low": 0.08}, "traffic": {"high": 0.07, "medium": 0.05, "low": 0.03}, "social": {"high": 0.03, "medium": 0.03, "low": 0.03}},
+    },
 }
 
-# ── Tier 2: Pune — Maharashtra monsoon, moderate traffic ──
-RISK_PROBABILITIES["pune"] = {
-    m: {
-        "rainfall":  {t: round(RISK_PROBABILITIES["mumbai"][m]["rainfall"][t] * 0.7, 2) for t in ["high", "medium", "low"]},
-        "heat":      {t: round(RISK_PROBABILITIES["mumbai"][m]["heat"][t] * 0.9, 2) for t in ["high", "medium", "low"]},
-        "cold_fog":  {t: round(RISK_PROBABILITIES["mumbai"][m]["cold_fog"][t] * 1.2, 2) for t in ["high", "medium", "low"]},
-        "aqi":       {t: round(RISK_PROBABILITIES["mumbai"][m]["aqi"][t] * 0.6, 2) for t in ["high", "medium", "low"]},
-        "traffic":   {t: round(RISK_PROBABILITIES["mumbai"][m]["traffic"][t] * 0.7, 2) for t in ["high", "medium", "low"]},
-        "social":    {t: round(RISK_PROBABILITIES["mumbai"][m]["social"][t] * 0.8, 2) for t in ["high", "medium", "low"]},
-    } for m in range(1, 13)
-}
-
-# ── Tier 2: Hyderabad — hot summers, moderate rain, growing traffic ──
-RISK_PROBABILITIES["hyderabad"] = {
-    m: {
-        "rainfall":  {t: round(RISK_PROBABILITIES["chennai"][m]["rainfall"][t] * 0.6, 2) for t in ["high", "medium", "low"]},
-        "heat":      {t: round(RISK_PROBABILITIES["delhi"][m]["heat"][t] * 0.8, 2) for t in ["high", "medium", "low"]},
-        "cold_fog":  {t: round(RISK_PROBABILITIES["delhi"][m]["cold_fog"][t] * 0.2, 2) for t in ["high", "medium", "low"]},
-        "aqi":       {t: round(RISK_PROBABILITIES["delhi"][m]["aqi"][t] * 0.4, 2) for t in ["high", "medium", "low"]},
-        "traffic":   {t: round(RISK_PROBABILITIES["bangalore"][m]["traffic"][t] * 0.8, 2) for t in ["high", "medium", "low"]},
-        "social":    {"high": 0.03, "medium": 0.03, "low": 0.03},
-    } for m in range(1, 13)
-}
-
-# ── Tier 2: Ahmedabad — extreme heat, industrial AQI, Gujarat floods ──
-RISK_PROBABILITIES["ahmedabad"] = {
-    m: {
-        "rainfall":  {t: round(RISK_PROBABILITIES["mumbai"][m]["rainfall"][t] * 0.5, 2) for t in ["high", "medium", "low"]},
-        "heat":      {t: round(min(RISK_PROBABILITIES["delhi"][m]["heat"][t] * 1.1, 0.95), 2) for t in ["high", "medium", "low"]},
-        "cold_fog":  {t: round(RISK_PROBABILITIES["delhi"][m]["cold_fog"][t] * 0.3, 2) for t in ["high", "medium", "low"]},
-        "aqi":       {t: round(RISK_PROBABILITIES["delhi"][m]["aqi"][t] * 0.5, 2) for t in ["high", "medium", "low"]},
-        "traffic":   {t: round(RISK_PROBABILITIES["mumbai"][m]["traffic"][t] * 0.6, 2) for t in ["high", "medium", "low"]},
-        "social":    {"high": 0.03, "medium": 0.03, "low": 0.03},
-    } for m in range(1, 13)
-}
-
-# ── Tier 2: Jaipur — extreme heat, dust storms, Rajasthan floods ──
-RISK_PROBABILITIES["jaipur"] = {
-    m: {
-        "rainfall":  {t: round(RISK_PROBABILITIES["delhi"][m]["rainfall"][t] * 0.7, 2) for t in ["high", "medium", "low"]},
-        "heat":      {t: round(min(RISK_PROBABILITIES["delhi"][m]["heat"][t] * 1.15, 0.95), 2) for t in ["high", "medium", "low"]},
-        "cold_fog":  {t: round(RISK_PROBABILITIES["delhi"][m]["cold_fog"][t] * 0.6, 2) for t in ["high", "medium", "low"]},
-        "aqi":       {t: round(RISK_PROBABILITIES["delhi"][m]["aqi"][t] * 0.45, 2) for t in ["high", "medium", "low"]},
-        "traffic":   {t: round(RISK_PROBABILITIES["delhi"][m]["traffic"][t] * 0.5, 2) for t in ["high", "medium", "low"]},
-        "social":    {"high": 0.04, "medium": 0.04, "low": 0.04},
-    } for m in range(1, 13)
-}
-
-# ── Tier 3: Lucknow — UP floods, Delhi-like heat/fog ──
-RISK_PROBABILITIES["lucknow"] = {
-    m: {
-        "rainfall":  {t: round(RISK_PROBABILITIES["delhi"][m]["rainfall"][t] * 0.9, 2) for t in ["high", "medium", "low"]},
-        "heat":      {t: round(RISK_PROBABILITIES["delhi"][m]["heat"][t] * 0.9, 2) for t in ["high", "medium", "low"]},
-        "cold_fog":  {t: round(RISK_PROBABILITIES["delhi"][m]["cold_fog"][t] * 0.85, 2) for t in ["high", "medium", "low"]},
-        "aqi":       {t: round(RISK_PROBABILITIES["delhi"][m]["aqi"][t] * 0.6, 2) for t in ["high", "medium", "low"]},
-        "traffic":   {t: round(RISK_PROBABILITIES["delhi"][m]["traffic"][t] * 0.4, 2) for t in ["high", "medium", "low"]},
-        "social":    {"high": 0.05, "medium": 0.05, "low": 0.05},
-    } for m in range(1, 13)
-}
-
-# ── Tier 3: Indore — central India heat, moderate monsoon ──
-RISK_PROBABILITIES["indore"] = {
-    m: {
-        "rainfall":  {t: round(RISK_PROBABILITIES["mumbai"][m]["rainfall"][t] * 0.4, 2) for t in ["high", "medium", "low"]},
-        "heat":      {t: round(RISK_PROBABILITIES["delhi"][m]["heat"][t] * 0.85, 2) for t in ["high", "medium", "low"]},
-        "cold_fog":  {t: round(RISK_PROBABILITIES["delhi"][m]["cold_fog"][t] * 0.3, 2) for t in ["high", "medium", "low"]},
-        "aqi":       {t: round(RISK_PROBABILITIES["delhi"][m]["aqi"][t] * 0.35, 2) for t in ["high", "medium", "low"]},
-        "traffic":   {t: round(RISK_PROBABILITIES["mumbai"][m]["traffic"][t] * 0.35, 2) for t in ["high", "medium", "low"]},
-        "social":    {"high": 0.03, "medium": 0.03, "low": 0.03},
-    } for m in range(1, 13)
-}
-
-# ── Tier 3: Patna — Bihar floods (worst in India), extreme heat ──
-RISK_PROBABILITIES["patna"] = {
-    m: {
-        "rainfall":  {t: round(min(RISK_PROBABILITIES["kolkata"][m]["rainfall"][t] * 1.3, 0.95), 2) for t in ["high", "medium", "low"]},
-        "heat":      {t: round(RISK_PROBABILITIES["delhi"][m]["heat"][t] * 0.9, 2) for t in ["high", "medium", "low"]},
-        "cold_fog":  {t: round(RISK_PROBABILITIES["delhi"][m]["cold_fog"][t] * 0.7, 2) for t in ["high", "medium", "low"]},
-        "aqi":       {t: round(RISK_PROBABILITIES["delhi"][m]["aqi"][t] * 0.45, 2) for t in ["high", "medium", "low"]},
-        "traffic":   {t: round(RISK_PROBABILITIES["kolkata"][m]["traffic"][t] * 0.4, 2) for t in ["high", "medium", "low"]},
-        "social":    {"high": 0.05, "medium": 0.05, "low": 0.05},
-    } for m in range(1, 13)
-}
-
-# ── Tier 3: Bhopal — central India, moderate risks ──
-RISK_PROBABILITIES["bhopal"] = {
-    m: {
-        "rainfall":  {t: round(RISK_PROBABILITIES["mumbai"][m]["rainfall"][t] * 0.35, 2) for t in ["high", "medium", "low"]},
-        "heat":      {t: round(RISK_PROBABILITIES["delhi"][m]["heat"][t] * 0.8, 2) for t in ["high", "medium", "low"]},
-        "cold_fog":  {t: round(RISK_PROBABILITIES["delhi"][m]["cold_fog"][t] * 0.35, 2) for t in ["high", "medium", "low"]},
-        "aqi":       {t: round(RISK_PROBABILITIES["delhi"][m]["aqi"][t] * 0.35, 2) for t in ["high", "medium", "low"]},
-        "traffic":   {t: round(RISK_PROBABILITIES["mumbai"][m]["traffic"][t] * 0.3, 2) for t in ["high", "medium", "low"]},
-        "social":    {"high": 0.03, "medium": 0.03, "low": 0.03},
-    } for m in range(1, 13)
-}
+RISK_PROBABILITIES = _CITY_BASE_PROBS
 
 
 # ── Payout and Pricing Differentials ──
@@ -645,6 +685,59 @@ AREA_TYPE_MULTIPLIER = {
 # Margin multiplier (35% gross margin target)
 MARGIN = 1.35
 
+# Max weekly premium by city tier × zone density.
+# Anchored to 1.25% of weekly earnings per tier:
+#   tier_1 = ₹6000/wk  →  ₹75 max
+#   tier_2 = ₹4500/wk  →  ₹56 max  (4500/6000 × 75)
+#   tier_3 = ₹3000/wk  →  ₹38 max  (3000/6000 × 75)
+# Zone density (high/medium/low) reflects congestion — ₹10 steps within tier.
+CITY_TIER_ZONE_PREMIUM = {
+    "tier_1": {"high": 75, "medium": 65, "low": 55},
+    "tier_2": {"high": 56, "medium": 49, "low": 41},
+    "tier_3": {"high": 38, "medium": 33, "low": 28},
+}
+
+# Lookup: city name → city tier (used to derive tier when only city is known)
+CITY_TIER_CODES = {
+    "mumbai": "tier_1", "delhi": "tier_1", "bangalore": "tier_1",
+    "chennai": "tier_1", "kolkata": "tier_1",
+    "pune": "tier_2", "hyderabad": "tier_2", "ahmedabad": "tier_2", "jaipur": "tier_2",
+    "lucknow": "tier_3", "indore": "tier_3", "patna": "tier_3", "bhopal": "tier_3",
+}
+
+BASE_TRIGGER_LOSS_COVERAGE = {
+    "rainfall": 280.0,
+    "heat": 180.0,
+    "aqi": 160.0,
+    "traffic": 100.0,
+    "cold_fog": 120.0,
+    "social": 400.0,
+}
+
+
+def premium_to_weekly_cap(premium_amount: float) -> float:
+    """Map weekly premium → max weekly payout cap.
+    Uses 8/3 multiplier so ₹75→₹200, ₹56→₹150, ₹38→₹100, ₹28→₹75.
+    Rounds to nearest ₹25 for clean communication to riders.
+    """
+    premium = max(25.0, min(75.0, float(premium_amount)))
+    return max(75.0, round(premium * 8 / 3 / 25) * 25)
+
+
+def zone_tier_to_weekly_cap(zone_tier: str, city_tier: str = "tier_1") -> float:
+    """Return the weekly payout cap for a zone density + city tier combination."""
+    tier_prems = CITY_TIER_ZONE_PREMIUM.get(city_tier, CITY_TIER_ZONE_PREMIUM["tier_1"])
+    target_premium = tier_prems.get(str(zone_tier).lower(), 60.0)
+    return premium_to_weekly_cap(target_premium)
+
+
+def coverage_triggers_from_premium(premium_amount: float) -> dict[str, float]:
+    scale = premium_to_weekly_cap(premium_amount) / 200.0
+    return {
+        trigger: round(loss_amount * scale, 1)
+        for trigger, loss_amount in BASE_TRIGGER_LOSS_COVERAGE.items()
+    }
+
 
 class PricingEngine:
     """
@@ -668,65 +761,57 @@ class PricingEngine:
     ) -> dict:
         """
         Calculate the weekly premium for a given city/zone/month.
-        Uses exact formula from underwriting specs:
-        Base: (trigger probability) × (avg income lost per day) × (days exposed)
-        Then adjusts for: city, peril type, worker activity tier.
+        Uses the ML actuarial registry for the base quote, then applies
+        area/activity multipliers for the final microinsurance ticket.
         """
         city_lower = city.lower()
-        risk_data = RISK_PROBABILITIES.get(city_lower, {}).get(month, {})
-
-        if not risk_data:
+        zone_key = str(zone_tier).lower()
+        pricing_inputs = ml.get_pricing_inputs(city, zone_key, month, city_tier)
+        if not pricing_inputs:
             logger.warning(f"No risk data for {city}, month {month}. Using defaults.")
             return self._default_premium(city, zone_tier, month, city_tier, area_type)
 
-        # 1. Base Multipliers (City, Area)
+        # City tier is already encoded in the model features. Area and activity stay
+        # as post-model multipliers so semi-urban / rural and low-activity workers
+        # still price lower without changing the public API.
         tier_mult = CITY_TIER_MULTIPLIER.get(city_tier, 1.0)
         area_mult = AREA_TYPE_MULTIPLIER.get(area_type, 1.0)
-        
-        # 2. Worker Activity Tier Multiplier (Higher activity = higher exposure = higher premium)
-        # If < 5 days => "low" tier => much less exposed, cheaper premium.
         activity_tier_mult = {"high": 1.0, "medium": 0.9, "low": 0.7}.get(activity_tier, 1.0)
-        
-        combined_mult = tier_mult * area_mult * activity_tier_mult
+        actuarial = pricing_inputs["actuarial"]
+        model_premium = ml.predict_premium(
+            pricing_inputs["month_sin"],
+            pricing_inputs["month_cos"],
+            pricing_inputs["zone_tier_enc"],
+            pricing_inputs["city_tier_enc"],
+            pricing_inputs["peril_probabilities"],
+            actuarial["expected_loss"],
+            actuarial["coefficient_of_variation"],
+            actuarial["safety_loading"],
+        )
+        adjusted_total = model_premium * area_mult * activity_tier_mult
+        tier_prems = CITY_TIER_ZONE_PREMIUM.get(city_tier, CITY_TIER_ZONE_PREMIUM["tier_1"])
+        max_premium = tier_prems.get(zone_key, 60)
+        min_premium = max(20, max_premium // 3)
+        zone_floor = max_premium * 0.60 * area_mult * activity_tier_mult
+        adjusted_total = max(adjusted_total, zone_floor)
+        final_total = max(min_premium, min(max_premium, round(adjusted_total)))
 
-        breakdown = {}
-        total = 0
-
-        # Note: AVG_PAYOUT_PER_EVENT here mimics "avg income lost per day"
-        # We model exposure based on assumed days worked in a week (e.g. 6 days)
-        assumed_days_exposed_per_week = 6.0 
-
-        for peril_type, avg_income_lost_per_day in AVG_PAYOUT_PER_EVENT.items():
-            # (trigger probability)
-            # From historical 10-year Gumbel/Lognormal simulation
-            trigger_probability = risk_data.get(peril_type, {}).get(zone_tier, 0)
-            
-            # Base Formula: prob × income_lost × days_exposed
-            base_trigger_premium = trigger_probability * avg_income_lost_per_day * assumed_days_exposed_per_week
-            
-            # Adjust for city, peril magnitude (margin), and worker activity tier
-            adjusted_premium = base_trigger_premium * combined_mult * MARGIN
-            
-            breakdown[peril_type] = round(adjusted_premium, 1)
-            total += adjusted_premium
-
-        # STRICT TARGET RANGE: Targeting ~75Rs for Tier 1. Range 30-95
-        # Enforce this hard cap range for the weekly microinsurance ticket.
-        final_total = max(30, min(95, round(total)))
-
-        # ALWAYS Scale breakdown proportionally to ensure it exactly matches final_total
-        if total > 0:
-            scale_factor = final_total / total
-            breakdown = {k: round(v * scale_factor, 1) for k, v in breakdown.items()}
-            current_sum = sum(breakdown.values())
-            if abs(current_sum - final_total) > 0.01:
-                # Add difference to largest value to perfectly match
-                largest_key = max(breakdown, key=breakdown.get)
-                breakdown[largest_key] = round(breakdown[largest_key] + (final_total - current_sum), 1)
+        expected_components = actuarial["expected_components"]
+        total_component_loss = sum(expected_components.values())
+        if total_component_loss > 0:
+            scale_factor = final_total / total_component_loss
+            breakdown = {
+                peril: round(component * scale_factor, 1)
+                for peril, component in expected_components.items()
+            }
         else:
-            final_total = 0
+            equal_share = round(final_total / max(len(AVG_PAYOUT_PER_EVENT), 1), 1)
+            breakdown = {peril: equal_share for peril in AVG_PAYOUT_PER_EVENT}
 
-        total = final_total
+        current_sum = round(sum(breakdown.values()), 1)
+        if breakdown and abs(current_sum - final_total) > 0.01:
+            largest_key = max(breakdown, key=breakdown.get)
+            breakdown[largest_key] = round(breakdown[largest_key] + (final_total - current_sum), 1)
 
         return {
             "city": city,
@@ -735,8 +820,8 @@ class PricingEngine:
             "area_type": area_type,
             "activity_tier": activity_tier,
             "month": month,
-            "weekly_premium": total,
-            "total_weekly_premium": total,
+            "weekly_premium": final_total,
+            "total_weekly_premium": final_total,
             "breakdown": breakdown,
             "margin_applied": MARGIN,
             "multipliers_used": {
@@ -744,13 +829,21 @@ class PricingEngine:
                 "area": area_mult,
                 "activity_tier": activity_tier_mult
             },
-            "formula": "(trigger probability) × (avg income lost per day) × (days exposed), adjusted for city, peril, activity_tier",
+            "formula": "Actuarial expected loss + safety loading, then ML-smoothed premium with area/activity adjustments.",
+            "actuarial": {
+                "expected_loss": actuarial["expected_loss"],
+                "std_loss": actuarial["std_loss"],
+                "coefficient_of_variation": actuarial["coefficient_of_variation"],
+                "safety_loading_pct": round(actuarial["safety_loading"] * 100, 1),
+            },
+            "ml_model": "GradientBoostingRegressor",
+            "weekly_cap": premium_to_weekly_cap(final_total),
         }
 
-    def calculate_annual_schedule(self, city: str, zone_tier: str) -> list:
+    def calculate_annual_schedule(self, city: str, zone_tier: str, city_tier: str = "tier_1") -> list:
         """Calculate premium for every month of the year."""
         return [
-            self.calculate_premium(city, zone_tier, month)
+            self.calculate_premium(city, zone_tier, month, city_tier=city_tier)
             for month in range(1, 13)
         ]
 
@@ -782,6 +875,7 @@ class PricingEngine:
             "total_weekly_premium": base,
             "breakdown": {t: round(7.5 * tier_mult * area_mult, 1) for t in AVG_PAYOUT_PER_EVENT},
             "note": "Default premium — no city-specific data available",
+            "weekly_cap": premium_to_weekly_cap(base),
         }
 
 

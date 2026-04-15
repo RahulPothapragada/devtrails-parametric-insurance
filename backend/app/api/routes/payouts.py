@@ -149,6 +149,75 @@ async def bulk_initiate(
     }
 
 
+@router.post("/{claim_id}/auto-disburse-single", summary="Parametric auto-payout for a single claim (UPI + IMPS fallback)")
+async def auto_disburse_single(
+    claim_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_rider=Depends(get_current_rider),
+):
+    """Single-claim parametric disbursal: UPI first, IMPS fallback. No rider clicks needed."""
+    from app.services.payout.payout_service import auto_disburse_claim
+    result_row = await db.execute(select(Claim).where(Claim.id == claim_id))
+    claim = result_row.scalar_one_or_none()
+    if not claim:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    if claim.rider_id != current_rider.id:
+        raise HTTPException(status_code=403, detail="Not your claim")
+    result = await auto_disburse_claim(claim_id, db)
+    await db.commit()
+    return result
+
+
+@router.post("/end-of-week", summary="End-of-week batch: pay all pending AUTO_APPROVED claims")
+async def end_of_week_batch(db: AsyncSession = Depends(get_db)):
+    """
+    Parametric end-of-week settlement.
+    Finds every AUTO_APPROVED claim with payout NOT_INITIATED and pays them all
+    automatically via UPI (IMPS fallback). No rider action required.
+    Called by a scheduled job in production (e.g. every Sunday midnight).
+    """
+    from app.services.payout.payout_service import auto_disburse_claim
+
+    result = await db.execute(
+        select(Claim).where(
+            Claim.status.in_([ClaimStatus.AUTO_APPROVED, ClaimStatus.APPROVED]),
+            Claim.payout_status.in_([PayoutStatus.NOT_INITIATED, PayoutStatus.ROLLED_BACK]),
+            Claim.payout_amount > 0,
+        )
+    )
+    pending = result.scalars().all()
+
+    paid, failed, total_amount = 0, 0, 0.0
+    transactions = []
+    for claim in pending:
+        txn = await auto_disburse_claim(claim.id, db)
+        if txn.get("success"):
+            paid += 1
+            total_amount += txn.get("amount", 0)
+        else:
+            failed += 1
+        transactions.append({
+            "claim_id": claim.id,
+            "rider_id": claim.rider_id,
+            "amount": claim.payout_amount,
+            "channel": txn.get("channel"),
+            "ref": txn.get("ref"),
+            "success": txn.get("success"),
+            "message": txn.get("message"),
+        })
+
+    await db.commit()
+    return {
+        "batch": "end_of_week",
+        "total_claims": len(pending),
+        "paid": paid,
+        "failed": failed,
+        "total_disbursed": round(total_amount, 2),
+        "success_rate": f"{round(paid / len(pending) * 100, 1)}%" if pending else "100%",
+        "transactions": transactions[:50],  # cap response size
+    }
+
+
 @router.post("/auto-disburse", summary="Instant auto-disburse all approved claims")
 async def auto_disburse(db: AsyncSession = Depends(get_db)):
     """
@@ -242,7 +311,7 @@ async def seed_demo(db: AsyncSession = Depends(get_db)):
             payout_amount=payout_val,
             status=ClaimStatus.APPROVED,
             payout_status=PayoutStatus.NOT_INITIATED,
-            event_time=datetime.now(timezone.utc)
+            event_time=datetime.utcnow()
         )
         db.add(claim)
         count += 1

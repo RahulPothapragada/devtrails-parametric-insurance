@@ -52,6 +52,7 @@ async def check_claim_fraud(claim_id: int, db: AsyncSession = Depends(get_db)):
         ],
         auto_approved=verdict.auto_approve,
         processing_time=verdict.processing_time,
+        ml_anomaly_score=verdict.ml_anomaly_score,
     )
 
 

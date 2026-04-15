@@ -9,7 +9,7 @@ import random
 
 from app.core.database import get_db
 from app.core.auth import hash_password, verify_password, create_access_token, get_current_rider
-from app.models.models import Rider
+from app.models.models import Rider, Zone, City
 from app.schemas.schemas import Token, RiderOut
 
 router = APIRouter()
@@ -132,10 +132,31 @@ async def get_me(rider: Rider = Depends(get_current_rider)):
 # ── Demo login shortcut ──
 
 @router.post("/demo-login", response_model=Token, summary="One-click demo login (no password)")
-async def demo_login(db: AsyncSession = Depends(get_db)):
-    """Hackathon demo shortcut: logs in as the first seeded rider."""
-    result = await db.execute(select(Rider).order_by(Rider.id).limit(1))
-    rider = result.scalar_one_or_none()
+async def demo_login(city: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    """Hackathon demo shortcut: logs in as a seeded rider. Pass ?city=lucknow to switch tiers."""
+    rider: Optional[Rider] = None
+
+    if city:
+        # Find a rider in the requested city
+        city_result = await db.execute(
+            select(City).where(City.name.ilike(f"%{city.strip()}%")).limit(1)
+        )
+        city_obj = city_result.scalar_one_or_none()
+        if city_obj:
+            zone_result = await db.execute(
+                select(Zone).where(Zone.city_id == city_obj.id).limit(1)
+            )
+            zone = zone_result.scalar_one_or_none()
+            if zone:
+                rider_result = await db.execute(
+                    select(Rider).where(Rider.zone_id == zone.id).order_by(Rider.id).limit(1)
+                )
+                rider = rider_result.scalar_one_or_none()
+
+    if not rider:
+        result = await db.execute(select(Rider).order_by(Rider.id).limit(1))
+        rider = result.scalar_one_or_none()
+
     if not rider:
         raise HTTPException(status_code=404, detail="No riders in DB. Run: python -m app.mock_data.seed_db")
 

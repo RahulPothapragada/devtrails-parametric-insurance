@@ -14,7 +14,9 @@ from datetime import datetime, timedelta
 from typing import Optional
 from app.services.triggers.weather_service import WeatherService
 from app.services.triggers.aqi_service import AQIService
-from app.services.triggers.trigger_engine import TRIGGER_THRESHOLDS
+from app.services.ml_models import ml
+from app.services.pricing.pricing_engine import zone_tier_to_weekly_cap, CITY_TIER_CODES
+from app.services.triggers.trigger_engine import get_trigger_thresholds
 import logging
 
 logger = logging.getLogger(__name__)
@@ -22,13 +24,13 @@ logger = logging.getLogger(__name__)
 
 # Average hourly earnings by shift block (Zepto Mumbai data)
 HOURLY_EARNINGS_BY_BLOCK = {
-    "early_morning": {"hours": "6AM-9AM", "avg_rate": 70},    # Low demand
-    "morning":       {"hours": "9AM-12PM", "avg_rate": 95},   # Moderate
-    "lunch":         {"hours": "12PM-2PM", "avg_rate": 115},  # High demand
-    "afternoon":     {"hours": "2PM-5PM", "avg_rate": 85},    # Moderate
-    "evening":       {"hours": "5PM-8PM", "avg_rate": 120},   # Peak demand
-    "dinner":        {"hours": "8PM-11PM", "avg_rate": 110},  # High demand
-    "late_night":    {"hours": "11PM-1AM", "avg_rate": 75},   # Low demand
+    "early_morning": {"hours": "6AM-9AM",   "avg_rate": 100},  # Low demand
+    "morning":       {"hours": "9AM-12PM",  "avg_rate": 130},  # Moderate
+    "lunch":         {"hours": "12PM-2PM",  "avg_rate": 160},  # High demand
+    "afternoon":     {"hours": "2PM-5PM",   "avg_rate": 120},  # Moderate
+    "evening":       {"hours": "5PM-8PM",   "avg_rate": 180},  # Peak demand
+    "dinner":        {"hours": "8PM-11PM",  "avg_rate": 170},  # High demand
+    "late_night":    {"hours": "11PM-1AM",  "avg_rate": 90},   # Low demand
 }
 
 
@@ -80,7 +82,11 @@ class PredictEngine:
         total_normal = sum(d["normal_earnings"] for d in daily_forecasts)
         total_predicted = sum(d["predicted_earnings"] for d in daily_forecasts)
         total_loss = total_normal - total_predicted
-        insurance_coverage = round(total_loss * 0.65, 0)  # ~65% coverage estimate
+        city_tier = CITY_TIER_CODES.get(city.lower(), "tier_1")
+        weekly_cap = zone_tier_to_weekly_cap(zone_tier, city_tier)
+        insurance_coverage = 0.0
+        if total_loss > 75:
+            insurance_coverage = min(round(total_loss * 0.50, 0), weekly_cap)
 
         return {
             "zone": {"lat": zone_lat, "lng": zone_lng, "tier": zone_tier},
@@ -106,52 +112,59 @@ class PredictEngine:
         rainfall = weather.get("rainfall_mm", 0)
         temp_max = weather.get("temp_max", 32)
         temp_min = weather.get("temp_min", 25)
+        visibility_m = weather.get("visibility_m", 10000)
         conditions = weather.get("conditions", "Clear")
         if isinstance(conditions, list):
             conditions = conditions[0] if conditions else "Clear"
 
         current_aqi = aqi.get("aqi", 100)
+        try:
+            forecast_month = datetime.fromisoformat(str(date)).month
+        except ValueError:
+            forecast_month = datetime.now().month
+        thresholds = get_trigger_thresholds(forecast_month)
+        zone_tier_enc = ml.zone_tier_to_enc(zone_tier)
 
         # Determine active triggers and their impact
         active_triggers = []
-        earnings_impact = 1.0  # 1.0 = no impact, 0.0 = total shutdown
+        earnings_impact = ml.predict_earnings_impact(
+            rainfall_mm=rainfall,
+            temp_max=temp_max,
+            aqi=current_aqi,
+            zone_tier_enc=zone_tier_enc,
+        )
 
         # Rainfall impact
-        if rainfall > TRIGGER_THRESHOLDS["rainfall"]["level_3"]:
+        if rainfall >= thresholds["rainfall"]["level_4"]:
             active_triggers.append({"type": "rainfall", "severity": "severe", "value": rainfall})
-            earnings_impact *= 0.1  # 90% earnings loss
-        elif rainfall > TRIGGER_THRESHOLDS["rainfall"]["level_2"]:
+        elif rainfall >= thresholds["rainfall"]["level_3"]:
             active_triggers.append({"type": "rainfall", "severity": "high", "value": rainfall})
-            earnings_impact *= 0.35  # 65% loss
-        elif rainfall > TRIGGER_THRESHOLDS["rainfall"]["level_1"]:
+        elif rainfall >= thresholds["rainfall"]["level_1"]:
             active_triggers.append({"type": "rainfall", "severity": "moderate", "value": rainfall})
-            earnings_impact *= 0.65  # 35% loss
 
         # Heat impact
-        if temp_max > TRIGGER_THRESHOLDS["heat"]["level_3"]:
+        if temp_max >= thresholds["heat"]["level_3"]:
             active_triggers.append({"type": "heat", "severity": "severe", "value": temp_max})
-            earnings_impact *= 0.2
-        elif temp_max > TRIGGER_THRESHOLDS["heat"]["level_2"]:
+        elif temp_max >= thresholds["heat"]["level_2"]:
             active_triggers.append({"type": "heat", "severity": "high", "value": temp_max})
-            earnings_impact *= 0.5
-        elif temp_max > TRIGGER_THRESHOLDS["heat"]["level_1"]:
+        elif temp_max >= thresholds["heat"]["level_1"]:
             active_triggers.append({"type": "heat", "severity": "moderate", "value": temp_max})
-            earnings_impact *= 0.75
 
         # AQI impact (using current as proxy for forecast)
-        if current_aqi > TRIGGER_THRESHOLDS["aqi"]["level_3"]:
+        if current_aqi >= thresholds["aqi"]["level_3"]:
             active_triggers.append({"type": "aqi", "severity": "severe", "value": current_aqi})
-            earnings_impact *= 0.3
-        elif current_aqi > TRIGGER_THRESHOLDS["aqi"]["level_2"]:
+        elif current_aqi >= thresholds["aqi"]["level_2"]:
             active_triggers.append({"type": "aqi", "severity": "high", "value": current_aqi})
-            earnings_impact *= 0.55
-        elif current_aqi > TRIGGER_THRESHOLDS["aqi"]["level_1"]:
+        elif current_aqi >= thresholds["aqi"]["level_1"]:
             active_triggers.append({"type": "aqi", "severity": "moderate", "value": current_aqi})
-            earnings_impact *= 0.8
 
-        # Zone tier modifier (high-risk zones lose more per event)
-        tier_modifier = {"high": 0.85, "medium": 0.92, "low": 1.0}
-        earnings_impact *= tier_modifier.get(zone_tier, 0.92)
+        # Cold fog — lower visibility = worse condition, so use <= (opposite of rainfall/heat/AQI)
+        if visibility_m <= thresholds["cold_fog"]["level_3"]:
+            active_triggers.append({"type": "cold_fog", "severity": "severe", "value": visibility_m})
+        elif visibility_m <= thresholds["cold_fog"]["level_2"]:
+            active_triggers.append({"type": "cold_fog", "severity": "high", "value": visibility_m})
+        elif visibility_m <= thresholds["cold_fog"]["level_1"]:
+            active_triggers.append({"type": "cold_fog", "severity": "moderate", "value": visibility_m})
 
         # Calculate per-block earnings
         blocks = []
@@ -162,10 +175,10 @@ class PredictEngine:
             normal = block_data["avg_rate"]
             # Rain typically impacts afternoon/evening more
             block_impact = earnings_impact
-            if rainfall > 15 and block_name in ["afternoon", "evening", "dinner"]:
-                block_impact *= 0.7  # Extra hit to peak rain hours
-            elif rainfall > 15 and block_name in ["early_morning", "morning"]:
-                block_impact = min(block_impact * 1.2, 1.0)  # Mornings slightly better
+            if rainfall >= thresholds["rainfall"]["level_1"] and block_name in ["afternoon", "evening", "dinner"]:
+                block_impact *= 0.78
+            elif rainfall >= thresholds["rainfall"]["level_1"] and block_name in ["early_morning", "morning"]:
+                block_impact = min(block_impact * 1.08, 1.0)
 
             predicted = round(normal * block_impact)
             blocks.append({

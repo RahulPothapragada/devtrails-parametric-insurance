@@ -7,9 +7,9 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.auth import get_current_rider
-from app.models.models import Rider, Zone, Policy
+from app.models.models import Rider, Zone, Policy, City
 from app.schemas.schemas import PolicyCreate, PolicyOut
-from app.services.pricing.pricing_engine import PricingEngine
+from app.services.pricing.pricing_engine import PricingEngine, coverage_triggers_from_premium
 
 router = APIRouter()
 pricing_engine = PricingEngine()
@@ -32,9 +32,16 @@ async def buy_policy(
     if not zone:
         raise HTTPException(status_code=404, detail="Zone not found")
 
+    city_result = await db.execute(select(City).where(City.id == zone.city_id))
+    city = city_result.scalar_one_or_none()
     now = datetime.now(timezone.utc)
     premium_data = pricing_engine.calculate_premium(
-        city="Mumbai", zone_tier=zone.tier.value, month=now.month
+        city=city.name if city else "Mumbai",
+        zone_tier=zone.tier.value,
+        month=now.month,
+        city_tier=city.city_tier.value if city and city.city_tier else "tier_1",
+        area_type=zone.area_type.value if zone.area_type else "urban",
+        activity_tier=rider.activity_tier,
     )
 
     week_start = now - timedelta(days=now.weekday())
@@ -47,7 +54,7 @@ async def buy_policy(
         week_end=week_start + timedelta(days=7),
         premium_amount=premium_data["total_weekly_premium"],
         premium_breakdown=premium_data["breakdown"],
-        coverage_triggers={"rainfall": 280, "heat": 180, "aqi": 160, "traffic": 100, "cold_fog": 120, "social": 400},
+        coverage_triggers=coverage_triggers_from_premium(premium_data["total_weekly_premium"]),
         status="active",
         auto_renew=body.auto_renew,
     )

@@ -14,8 +14,9 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.core.database import get_db
-from app.models.models import Rider, Policy, Zone
+from app.models.models import Rider, Policy, Zone, City
 from datetime import datetime, timezone, timedelta
+from app.services.pricing.pricing_engine import coverage_triggers_from_premium
 
 router = APIRouter()
 
@@ -54,13 +55,16 @@ async def onboard_rider(req: OnboardRequest, db: AsyncSession = Depends(get_db))
     if not zone:
         raise HTTPException(status_code=400, detail="Zone mapping failed.")
 
+    city_result = await db.execute(select(City).where(City.id == zone.city_id))
+    city = city_result.scalar_one_or_none()
+
     # 4. Policy Generation
     now = datetime.now(timezone.utc)
     from app.services.pricing.pricing_engine import PricingEngine
     pricing = PricingEngine()
     
     # We call pricing with the rider's activity tier
-    city_tier = "tier_1"
+    city_tier = city.city_tier.value if city and city.city_tier else "tier_1"
     area = zone.area_type.value if zone.area_type else "urban"
     zone_tier = zone.tier.value if zone.tier else "medium"
     
@@ -82,6 +86,8 @@ async def onboard_rider(req: OnboardRequest, db: AsyncSession = Depends(get_db))
         week_start=week_start,
         week_end=week_end,
         premium_amount=rate_res["weekly_premium"],
+        premium_breakdown=rate_res.get("breakdown"),
+        coverage_triggers=coverage_triggers_from_premium(rate_res["weekly_premium"]),
         status="active"
     )
     db.add(new_policy)
