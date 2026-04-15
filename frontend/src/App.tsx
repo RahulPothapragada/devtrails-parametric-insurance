@@ -188,7 +188,6 @@ function Navbar({ currentEffect }: { currentEffect: WeatherType }) {
         <div className="flex gap-3 items-center flex-wrap">
           {[
             { to: '/simulate', label: 'Simulate' },
-            { to: '/story', label: 'Story' },
             { to: '/graph', label: 'Graph' },
             { to: '/fraud', label: 'Defense' },
           ].map((link) => (
