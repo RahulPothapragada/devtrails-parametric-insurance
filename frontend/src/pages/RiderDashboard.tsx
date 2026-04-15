@@ -597,11 +597,13 @@ export default function RiderDashboard() {
                   <div className="flex items-center gap-2 border border-[#E5E5EA] rounded-xl px-4 py-3 bg-white focus-within:border-[#0071E3] transition-colors">
                     <span className="text-[#86868B] font-medium text-sm">+91</span>
                     <input
-                      type="tel"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       maxLength={10}
                       placeholder="10-digit phone number"
                       value={otpPhone}
-                      onChange={e => { setOtpPhone(e.target.value.replace(/\D/g, '')); setLoginError(''); }}
+                      onChange={e => { setOtpPhone(e.target.value.replace(/\D/g, '').slice(0, 10)); setLoginError(''); }}
                       onKeyDown={e => e.key === 'Enter' && handleSendOtp()}
                       className="flex-1 outline-none text-sm font-medium bg-transparent"
                     />
