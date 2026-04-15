@@ -633,15 +633,41 @@ export default function RiderDashboard() {
                       Demo OTP: <span className="font-bold tracking-widest">{demoOtp}</span>
                     </div>
                   )}
-                  <input
-                    type="text"
-                    maxLength={4}
-                    placeholder="Enter 4-digit OTP"
-                    value={otpCode}
-                    onChange={e => { setOtpCode(e.target.value.replace(/\D/g, '')); setLoginError(''); }}
-                    onKeyDown={e => e.key === 'Enter' && handleVerifyOtp()}
-                    className="border border-[#E5E5EA] rounded-xl px-4 py-3 text-center text-2xl tracking-[0.5em] font-bold outline-none focus:border-[#0071E3] transition-colors"
-                  />
+                  {/* 4-slot OTP display */}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={otpCode}
+                      onChange={e => { setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 4)); setLoginError(''); }}
+                      onKeyDown={e => e.key === 'Enter' && handleVerifyOtp()}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-text z-10"
+                      autoFocus
+                    />
+                    <div className="flex gap-3 justify-center">
+                      {[0, 1, 2, 3].map(i => (
+                        <div
+                          key={i}
+                          className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center text-2xl font-bold transition-all ${
+                            otpCode.length === i
+                              ? 'border-[#0071E3] bg-[#0071E3]/5 shadow-sm'
+                              : otpCode[i]
+                              ? 'border-[#1D1D1F] bg-white'
+                              : 'border-[#E5E5EA] bg-[#F5F5F7]'
+                          }`}
+                        >
+                          {otpCode[i] ? (
+                            <span className="text-[#1D1D1F]">{otpCode[i]}</span>
+                          ) : otpCode.length === i ? (
+                            <span className="w-0.5 h-6 bg-[#0071E3] animate-pulse rounded-full" />
+                          ) : (
+                            <span className="w-3 h-0.5 bg-[#D1D1D6] rounded-full" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                   <button
                     onClick={handleVerifyOtp}
                     disabled={loginLoading}
