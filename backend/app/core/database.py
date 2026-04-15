@@ -12,15 +12,15 @@ if db_url.startswith("postgresql"):
     ssl_ctx = ssl.create_default_context()
     ssl_ctx.check_hostname = False
     ssl_ctx.verify_mode = ssl.CERT_NONE
-    connect_args = {"ssl": ssl_ctx}
+    connect_args = {"ssl": ssl_ctx, "statement_cache_size": 0}
 else:
     connect_args = {"check_same_thread": False}
 
 engine = create_async_engine(
     db_url,
     echo=False,
-    pool_size=5,
-    max_overflow=10,
+    pool_size=2,
+    max_overflow=5,
     pool_pre_ping=True,
     connect_args=connect_args,
 )
