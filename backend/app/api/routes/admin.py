@@ -228,6 +228,7 @@ async def actuarial_summary(city_name: str, db: AsyncSession = Depends(get_db)):
         select(WeeklyLedger)
         .where(WeeklyLedger.city_id == city.id)
         .order_by(WeeklyLedger.week_start.desc())
+        .limit(8)
     )
     ledgers = ledger_result.scalars().all()
 
@@ -297,7 +298,10 @@ async def all_cities_actuarial(db: AsyncSession = Depends(get_db)):
     summaries = []
     for city in cities:
         ledger_result = await db.execute(
-            select(WeeklyLedger).where(WeeklyLedger.city_id == city.id)
+            select(WeeklyLedger)
+            .where(WeeklyLedger.city_id == city.id)
+            .order_by(WeeklyLedger.week_start.desc())
+            .limit(8)
         )
         ledgers = ledger_result.scalars().all()
         if not ledgers:
