@@ -59,10 +59,11 @@ function fmt(n: number) {
 
 // ── Sidebar ──
 const NAV_ITEMS = [
-  { icon: LayoutDashboard, label: 'Dashboard', to: '/admin' },
-  { icon: LineChart,       label: 'Analytics', to: '/admin/analytics' },
-  { icon: GitFork,         label: 'Fraud Graph', to: '/admin/graph' },
-  { icon: Database,        label: 'Data',      to: '/admin/data' },
+  { icon: LayoutDashboard, label: 'Dashboard',  to: '/admin' },
+  { icon: FileTextIcon,    label: 'Claims',     to: '/admin/claims' },
+  { icon: LineChart,       label: 'Analytics',  to: '/admin/analytics' },
+  { icon: GitFork,         label: 'Fraud Graph',to: '/admin/graph' },
+  { icon: Database,        label: 'Data',       to: '/admin/data' },
 ];
 
 function Sidebar() {
@@ -454,7 +455,8 @@ function AdminContent({ session }: { session: Session }) {
   const isAnalytics = location.pathname === '/admin/analytics';
   const isData      = location.pathname === '/admin/data';
   const isGraph     = location.pathname === '/admin/graph';
-  const isSubPage   = isAnalytics || isData || isGraph;
+  const isClaims    = location.pathname === '/admin/claims';
+  const isSubPage   = isAnalytics || isData || isGraph || isClaims;
 
   const userName   = session.user.user_metadata?.full_name
                   ?? session.user.user_metadata?.name
@@ -475,6 +477,10 @@ function AdminContent({ session }: { session: Session }) {
   const [selectedRider, setSelectedRider] = useState<any | null>(null);
   const [liveFeed, setLiveFeed]           = useState<any[]>([]);
   const [searchQuery, setSearchQuery]     = useState('');
+  const [allClaims, setAllClaims]         = useState<any[]>([]);
+  const [claimsFilter, setClaimsFilter]   = useState<string>('all');
+  const [claimsLoading, setClaimsLoading] = useState(false);
+  const [reviewingId, setReviewingId]     = useState<number | null>(null);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -538,6 +544,33 @@ function AdminContent({ session }: { session: Session }) {
     finally { setLoadingRiders(false); }
   };
 
+  const fetchClaims = async (status = claimsFilter) => {
+    setClaimsLoading(true);
+    try {
+      const url = status === 'all'
+        ? `${API}/admin/claims?limit=200`
+        : `${API}/admin/claims?status=${status}&limit=200`;
+      const res = await fetch(url);
+      if (res.ok) setAllClaims(await res.json());
+    } catch (e) { console.error(e); }
+    finally { setClaimsLoading(false); }
+  };
+
+  useEffect(() => {
+    if (isClaims) fetchClaims(claimsFilter);
+  }, [isClaims, claimsFilter]);
+
+  const reviewClaim = async (id: number, verdict: 'approved' | 'denied') => {
+    setReviewingId(id);
+    try {
+      await fetch(`${API}/admin/claims/${id}/review?verdict=${verdict}`, { method: 'PUT' });
+      setAllClaims(prev => prev.map(c =>
+        c.id === id ? { ...c, status: verdict } : c
+      ));
+    } catch (e) { console.error(e); }
+    finally { setReviewingId(null); }
+  };
+
   const totalPremium = actuarial.reduce((s, c) => s + c.premium_collected, 0);
   const alertCities  = actuarial.filter(c => c.sustainability === 'watch' || c.sustainability === 'critical');
   const stpRate      = stats ? Math.min(99, 80 + Math.round((stats.active_policies / Math.max(stats.total_riders, 1)) * 15)) : 0;
@@ -567,7 +600,7 @@ function AdminContent({ session }: { session: Session }) {
           <div className="flex justify-between items-center w-full px-8 py-3.5 max-w-7xl mx-auto">
             <div className="flex items-center gap-8">
               <h1 className="text-lg font-bold tracking-tight text-[#131b2e]" style={{ fontFamily: "'Manrope', sans-serif" }}>
-                {isAnalytics ? 'Analytics' : isData ? 'Data Timeline' : selectedCity ? `${selectedCity} — Rider Network` : 'Claims Center'}
+                {isAnalytics ? 'Analytics' : isData ? 'Data Timeline' : isGraph ? 'Fraud Graph' : isClaims ? 'All Claims' : selectedCity ? `${selectedCity} — Rider Network` : 'Claims Center'}
               </h1>
               {!isSubPage && (
                 <nav className="hidden md:flex items-center gap-6">
@@ -645,6 +678,120 @@ function AdminContent({ session }: { session: Session }) {
         {isGraph && (
           <div className="flex-1 min-h-0">
             <FraudGraphPage />
+          </div>
+        )}
+
+        {/* ── Claims Tab ── */}
+        {isClaims && (
+          <div className="p-8 max-w-7xl mx-auto w-full space-y-6">
+            {/* Filter bar */}
+            <div className="flex flex-wrap items-center gap-2">
+              {[
+                { key: 'all',            label: 'All' },
+                { key: 'auto_approved',  label: 'Auto Approved' },
+                { key: 'approved',       label: 'Approved' },
+                { key: 'pending_review', label: 'Pending Review' },
+                { key: 'flagged',        label: 'Flagged' },
+                { key: 'denied',         label: 'Denied' },
+                { key: 'paid',           label: 'Paid' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setClaimsFilter(key)}
+                  className={cn(
+                    "px-4 py-1.5 rounded-full text-xs font-bold border transition-all",
+                    claimsFilter === key
+                      ? "bg-[#00488d] text-white border-[#00488d]"
+                      : "bg-white text-[#424752] border-[#e8ecf8] hover:border-[#00488d]"
+                  )}
+                >{label}</button>
+              ))}
+              <span className="ml-auto text-xs text-[#b0b5c3] font-medium">{allClaims.length} claims</span>
+            </div>
+
+            {/* Table */}
+            <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(19,27,46,0.06)] border border-[#e8ecf8]/60 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-sm">
+                  <thead className="bg-[#faf8ff] text-[11px] font-bold text-[#b0b5c3] uppercase tracking-widest">
+                    <tr>
+                      <th className="px-5 py-4 border-b border-[#e8ecf8]">ID</th>
+                      <th className="px-5 py-4 border-b border-[#e8ecf8]">Rider</th>
+                      <th className="px-5 py-4 border-b border-[#e8ecf8]">Zone</th>
+                      <th className="px-5 py-4 border-b border-[#e8ecf8]">Trigger</th>
+                      <th className="px-5 py-4 border-b border-[#e8ecf8]">Payout</th>
+                      <th className="px-5 py-4 border-b border-[#e8ecf8]">Fraud Score</th>
+                      <th className="px-5 py-4 border-b border-[#e8ecf8]">Time</th>
+                      <th className="px-5 py-4 border-b border-[#e8ecf8]">Status</th>
+                      <th className="px-5 py-4 border-b border-[#e8ecf8]">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {claimsLoading ? (
+                      <tr><td colSpan={9} className="px-5 py-12 text-center text-[#b0b5c3]">
+                        <RefreshCw className="w-5 h-5 animate-spin mx-auto" />
+                      </td></tr>
+                    ) : allClaims.length === 0 ? (
+                      <tr><td colSpan={9} className="px-5 py-12 text-center text-[#b0b5c3]">No claims found.</td></tr>
+                    ) : allClaims.map((claim, i) => {
+                      const statusStyles: Record<string, string> = {
+                        auto_approved:  'bg-green-50 text-green-700 border-green-200',
+                        approved:       'bg-green-50 text-green-700 border-green-200',
+                        paid:           'bg-blue-50 text-blue-700 border-blue-200',
+                        pending_review: 'bg-amber-50 text-amber-700 border-amber-200',
+                        flagged:        'bg-orange-50 text-orange-700 border-orange-200',
+                        denied:         'bg-red-50 text-red-700 border-red-200',
+                      };
+                      const canReview = claim.status === 'pending_review' || claim.status === 'flagged';
+                      return (
+                        <tr key={claim.id} className={cn("hover:bg-[#f2f3ff] transition-colors", i % 2 === 1 && "bg-[#faf8ff]/40")}>
+                          <td className="px-5 py-3.5 font-mono text-xs text-[#727783]">#{claim.id}</td>
+                          <td className="px-5 py-3.5 font-semibold text-[#131b2e]">{claim.rider_name}</td>
+                          <td className="px-5 py-3.5 text-[#424752] text-xs">{claim.zone}</td>
+                          <td className="px-5 py-3.5">
+                            <span className="px-2 py-0.5 bg-[#f2f3ff] text-[#00488d] rounded text-xs font-bold capitalize">{claim.trigger}</span>
+                          </td>
+                          <td className="px-5 py-3.5 font-mono text-xs font-semibold text-[#131b2e]">{fmt(claim.payout_amount || 0)}</td>
+                          <td className="px-5 py-3.5">
+                            <span className={cn(
+                              "font-bold text-xs",
+                              (claim.fraud_score || 0) >= 60 ? "text-red-600" :
+                              (claim.fraud_score || 0) >= 30 ? "text-amber-600" : "text-green-600"
+                            )}>{claim.fraud_score ?? '—'}</span>
+                          </td>
+                          <td className="px-5 py-3.5 text-xs text-[#727783]">
+                            {new Date(claim.event_time).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className={cn("px-2.5 py-0.5 rounded-full text-[11px] font-bold border capitalize", statusStyles[claim.status] || "bg-gray-50 text-gray-500 border-gray-200")}>
+                              {claim.status.replace('_', ' ')}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            {canReview ? (
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  disabled={reviewingId === claim.id}
+                                  onClick={() => reviewClaim(claim.id, 'approved')}
+                                  className="px-3 py-1 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 transition disabled:opacity-50"
+                                >Approve</button>
+                                <button
+                                  disabled={reviewingId === claim.id}
+                                  onClick={() => reviewClaim(claim.id, 'denied')}
+                                  className="px-3 py-1 bg-red-500 text-white text-xs font-bold rounded-lg hover:bg-red-600 transition disabled:opacity-50"
+                                >Deny</button>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-[#b0b5c3]">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
 

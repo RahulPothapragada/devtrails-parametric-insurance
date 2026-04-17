@@ -58,6 +58,39 @@ async def admin_stats(db: AsyncSession = Depends(get_db)):
     )
 
 
+@router.get("/claims")
+async def all_claims(
+    status: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    """All claims for admin — optionally filter by status."""
+    q = select(Claim).order_by(desc(Claim.event_time))
+    if status and status != "all":
+        q = q.where(Claim.status == status)
+    q = q.limit(limit).offset(offset)
+    claims = (await db.execute(q)).scalars().all()
+
+    result = []
+    for claim in claims:
+        rider = (await db.execute(select(Rider).where(Rider.id == claim.rider_id))).scalar_one_or_none()
+        zone = (await db.execute(select(Zone).where(Zone.id == rider.zone_id))).scalar_one_or_none() if rider else None
+        result.append({
+            "id": claim.id,
+            "rider_id": claim.rider_id,
+            "rider_name": rider.name if rider else "Unknown",
+            "city": zone.name.split("-")[0].strip() if zone else "Unknown",
+            "zone": zone.name if zone else "Unknown",
+            "trigger": claim.trigger_type.value if claim.trigger_type else "—",
+            "status": claim.status.value,
+            "payout_amount": claim.payout_amount,
+            "fraud_score": claim.fraud_score,
+            "event_time": claim.event_time.isoformat(),
+        })
+    return result
+
+
 @router.get("/live-feed")
 async def live_rider_feed(limit: int = 20, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
