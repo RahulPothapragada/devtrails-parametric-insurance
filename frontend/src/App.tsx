@@ -15,6 +15,14 @@ import HeroDemo from './pages/HeroDemo';
 import ActuarialDashboard from './pages/ActuarialDashboard'; // [CORE PRESERVED]
 import Payouts from './pages/Payouts';
 import ParametricFlow from './pages/ParametricFlow';
+import LearnMore from './pages/LearnMore';
+import CareersPage from './pages/CareersPage';
+import PressPage from './pages/PressPage';
+import HelpPage from './pages/HelpPage';
+import ContactPage from './pages/ContactPage';
+import PrivacyPage from './pages/PrivacyPage';
+import TermsPage from './pages/TermsPage';
+import LegalPage from './pages/LegalPage';
 import WeatherEffects, { type WeatherType } from './components/ui/WeatherEffects';
 
 function AccountDropdown() {
@@ -257,19 +265,8 @@ function Navbar({ currentEffect }: { currentEffect: WeatherType }) {
         {/* Nav links */}
         <div className="flex gap-3 items-center flex-wrap">
           {[
-            { to: '/flow', label: 'Parametric Flow' },
-          ].map((link) => (
-            <Link key={link.to} to={link.to} className={cn("opacity-70 hover:opacity-100 transition-opacity", location.pathname === link.to && "text-[#0071E3] opacity-100")}>
-              {link.label}
-            </Link>
-          ))}
-
-          <div className="w-px h-4 bg-[#E5E5EA] mx-1" />
-
-          {[
             { to: '/rider', label: 'Rider' },
             { to: '/payouts', label: 'Payouts' },
-            { to: '/actuarial', label: 'Analytics' },
           ].map((link) => (
             <Link key={link.to} to={link.to} className={cn("opacity-70 hover:opacity-100 transition-opacity", location.pathname === link.to && "text-[#0071E3] opacity-100")}>
               {link.label}
@@ -304,6 +301,14 @@ function AnimatedRoutes() {
         <Route path="/actuarial" element={<ActuarialDashboard />} />
         <Route path="/data" element={<Navigate to="/admin/data" replace />} />
         <Route path="/flow" element={<ParametricFlow />} />
+        <Route path="/learn-more" element={<LearnMore />} />
+        <Route path="/careers" element={<CareersPage />} />
+        <Route path="/press" element={<PressPage />} />
+        <Route path="/help" element={<HelpPage />} />
+        <Route path="/contact" element={<ContactPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/legal" element={<LegalPage />} />
       </Routes>
     </AnimatePresence>
   );
@@ -362,7 +367,11 @@ function ServerWakeup() {
 function AppContent() {
   const location = useLocation();
   const [weatherEffect, setWeatherEffect] = useState<WeatherType>('NORMAL');
-  const isStandaloneLayout = location.pathname === '/' || location.pathname === '/hero-demo' || location.pathname.startsWith('/admin');
+  const isStandaloneLayout =
+    location.pathname === '/' ||
+    location.pathname === '/hero-demo' ||
+    location.pathname.startsWith('/admin') ||
+    ['/careers', '/press', '/help', '/contact', '/privacy', '/terms', '/legal'].includes(location.pathname);
 
   // Live OpenWeatherMap API Integration
   useEffect(() => {

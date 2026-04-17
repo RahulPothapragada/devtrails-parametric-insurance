@@ -119,9 +119,12 @@ PLATFORMS      = ["Zepto","Blinkit","Swiggy Instamart"]
 
 
 def _name(global_idx: int) -> str:
+    pool_size = len(FIRST_NAMES) * len(LAST_NAMES)
     f = FIRST_NAMES[global_idx % len(FIRST_NAMES)]
     l = LAST_NAMES[(global_idx // len(FIRST_NAMES)) % len(LAST_NAMES)]
-    return f"{f} {l}"
+    cycle = global_idx // pool_size
+    suffix = f" {cycle + 2}" if cycle > 0 else ""
+    return f"{f} {l}{suffix}"
 
 
 def _phone(global_idx: int) -> str:

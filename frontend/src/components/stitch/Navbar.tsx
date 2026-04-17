@@ -5,8 +5,8 @@ import { cn } from '@/lib/utils';
 const NAV_LINKS = [
   { label: 'Home',     id: 'home' },
   { label: 'Features', id: 'features' },
+  { label: 'Pricing',  id: 'pricing-model-flow' },
   { label: 'Security', id: 'security' },
-  { label: 'Pricing',  id: 'pricing' },
 ];
 
 export function Navbar() {
@@ -14,26 +14,56 @@ export function Navbar() {
   const [activeSection, setActiveSection] = useState('home');
 
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 50);
+    // 1. Handle navbar background on scroll
+    const handleScroll = () => setIsScrolled(window.scrollY > 50);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
 
-      // Track which section is in view
-      for (const link of [...NAV_LINKS].reverse()) {
-        const el = document.getElementById(link.id);
-        if (el && window.scrollY >= el.offsetTop - 120) {
+    // 2. Track which sections are currently visible
+    const visibleSections = new Set<string>();
+
+    const sectionObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          visibleSections.add(entry.target.id);
+        } else {
+          visibleSections.delete(entry.target.id);
+        }
+      });
+
+      // Always pick the FIRST (topmost) visible section by NAV_LINKS order
+      for (const link of NAV_LINKS) {
+        if (visibleSections.has(link.id)) {
           setActiveSection(link.id);
-          break;
+          return;
         }
       }
+    }, {
+      root: null,
+      rootMargin: '-20% 0px -60% 0px',
+      threshold: 0
+    });
+
+    NAV_LINKS.forEach(link => {
+      const el = document.getElementById(link.id);
+      if (el) sectionObserver.observe(el);
+    });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      sectionObserver.disconnect();
     };
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   const scrollTo = (id: string) => {
     const el = document.getElementById(id);
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Calculate top position and subtract navbar height (approx 80px)
+      const topPos = el.getBoundingClientRect().top + window.scrollY - 80;
+      window.scrollTo({
+        top: topPos,
+        behavior: 'smooth'
+      });
     }
   };
 
@@ -60,10 +90,10 @@ export function Navbar() {
               key={id}
               onClick={() => scrollTo(id)}
               className={cn(
-                'transition-all duration-200 hover:text-[#0071E3] text-sm font-bold',
+                'transition-all duration-200 hover:text-[#0071E3] text-base font-extrabold',
                 activeSection === id
-                  ? 'text-[#0071E3] opacity-100'
-                  : 'text-[#1D1D1F] opacity-70 hover:opacity-100'
+                  ? 'text-[#0071E3]'
+                  : 'text-[#1D1D1F]'
               )}
             >
               {label}

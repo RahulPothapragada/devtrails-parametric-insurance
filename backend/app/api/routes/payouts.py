@@ -21,7 +21,7 @@ from app.services.payout.payout_service import (
     auto_payout_all,
 )
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 
 
 
@@ -311,9 +311,9 @@ async def demo_summary(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.post("/seed-demo", summary="Seed 25 approved claims for demo purposes")
+@router.post("/seed-demo", summary="Seed demo claims across admin workflow statuses")
 async def seed_demo(db: AsyncSession = Depends(get_db)):
-    """Creates 25 approved claims for riders with active policies."""
+    """Creates demo claims across paid, approved, pending review, flagged, denied, and auto-approved."""
     # Find 25 riders with active policies
     riders_result = await db.execute(
         select(Rider)
@@ -322,13 +322,27 @@ async def seed_demo(db: AsyncSession = Depends(get_db)):
         .limit(25)
     )
     riders = riders_result.scalars().all()
-    
+
+    claim_templates = [
+        {"status": ClaimStatus.AUTO_APPROVED, "payout_status": PayoutStatus.NOT_INITIATED, "fraud_score": 12.0},
+        {"status": ClaimStatus.APPROVED, "payout_status": PayoutStatus.NOT_INITIATED, "fraud_score": 28.0},
+        {"status": ClaimStatus.PENDING_REVIEW, "payout_status": PayoutStatus.NOT_INITIATED, "fraud_score": 49.0},
+        {"status": ClaimStatus.FLAGGED, "payout_status": PayoutStatus.NOT_INITIATED, "fraud_score": 58.0},
+        {"status": ClaimStatus.DENIED, "payout_status": PayoutStatus.NOT_INITIATED, "fraud_score": 72.0},
+        {"status": ClaimStatus.PAID, "payout_status": PayoutStatus.CONFIRMED, "fraud_score": 18.0},
+    ]
+
+    seeded_by_status: dict[str, int] = {}
     count = 0
-    for rider in riders:
+    now = datetime.utcnow()
+    for idx, rider in enumerate(riders):
         # Get policy
         pol_res = await db.execute(select(Policy).where(Policy.rider_id == rider.id).limit(1))
         policy = pol_res.scalar_one_or_none()
-        if not policy: continue
+        if not policy:
+            continue
+
+        template = claim_templates[idx % len(claim_templates)]
         trigger_enum = random.choice(list(TriggerType))
         payout_val = 30.0
         if policy.coverage_triggers and trigger_enum.value in policy.coverage_triggers:
@@ -341,15 +355,19 @@ async def seed_demo(db: AsyncSession = Depends(get_db)):
             trigger_value=120.0,
             trigger_threshold=64.5,
             payout_amount=payout_val,
-            status=ClaimStatus.APPROVED,
-            payout_status=PayoutStatus.NOT_INITIATED,
-            event_time=datetime.utcnow()
+            status=template["status"],
+            payout_status=template["payout_status"],
+            fraud_score=template["fraud_score"],
+            event_time=now - timedelta(minutes=idx * 7),
         )
         db.add(claim)
         count += 1
-    
+        seeded_by_status[template["status"].value] = seeded_by_status.get(template["status"].value, 0) + 1
+
     await db.commit()
-    return {"message": f"Seeded {count} claims for demo.", "count": count}
-
-
+    return {
+        "message": f"Seeded {count} demo claims across review states.",
+        "count": count,
+        "breakdown": seeded_by_status,
+    }
 

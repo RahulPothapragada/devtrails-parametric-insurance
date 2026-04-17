@@ -6,9 +6,9 @@ export function Footer() {
           <div>
             <h5 className="font-semibold text-[#1D1D1F] mb-4">Product</h5>
             <ul className="space-y-3">
-              <li><a href="#" className="hover:text-[#1D1D1F] hover:underline transition-colors">Features</a></li>
-              <li><a href="#" className="hover:text-[#1D1D1F] hover:underline transition-colors">Pricing</a></li>
-              <li><a href="#" className="hover:text-[#1D1D1F] hover:underline transition-colors">Security</a></li>
+              <li><a href="/#features" className="hover:text-[#1D1D1F] hover:underline transition-colors">Features</a></li>
+              <li><a href="/#pricing" className="hover:text-[#1D1D1F] hover:underline transition-colors">Pricing</a></li>
+              <li><a href="/#security" className="hover:text-[#1D1D1F] hover:underline transition-colors">Security</a></li>
             </ul>
           </div>
           <div>

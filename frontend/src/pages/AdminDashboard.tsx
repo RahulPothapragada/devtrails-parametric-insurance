@@ -13,6 +13,7 @@ import type { Session } from '@supabase/supabase-js';
 import ActuarialDashboard from './ActuarialDashboard';
 import DataTimeline from './DataTimeline';
 import FraudGraphPage from './FraudGraphPage';
+import FraudDefense from './FraudDefense';
 
 import { API_BASE as API } from '@/lib/api';
 
@@ -57,12 +58,15 @@ function fmt(n: number) {
   return `₹${n.toFixed(0)}`;
 }
 
+const APPLE_FONT_FAMILY = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif";
+
 // ── Sidebar ──
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Dashboard',  to: '/admin' },
   { icon: FileTextIcon,    label: 'Claims',     to: '/admin/claims' },
   { icon: LineChart,       label: 'Analytics',  to: '/admin/analytics' },
   { icon: GitFork,         label: 'Fraud Graph',to: '/admin/graph' },
+  { icon: ShieldCheck,     label: 'Fraud Defense', to: '/admin/fraud-defense' },
   { icon: Database,        label: 'Data',       to: '/admin/data' },
 ];
 
@@ -70,14 +74,14 @@ function Sidebar() {
   const location = useLocation();
 
   return (
-    <nav className="fixed left-0 top-0 h-full flex flex-col z-50 bg-[#faf8ff] border-r border-[#e8ecf8] w-64">
+    <nav className="fixed left-0 top-0 h-full flex flex-col z-50 bg-white border-r border-[#E5E5EA] w-64">
       {/* Logo */}
       <div className="mb-8 px-4 pt-5 flex items-center gap-3">
-        <div className="w-8 h-8 bg-[#00488d] rounded-lg flex items-center justify-center text-white shadow-sm">
+        <div className="w-8 h-8 bg-[#0071E3] rounded-lg flex items-center justify-center text-white shadow-sm">
           <Shield className="w-4 h-4" />
         </div>
         <div>
-          <div className="text-base font-black text-[#131b2e] tracking-tight font-['Manrope',sans-serif]">FlowSecure</div>
+          <div className="text-base font-black text-[#1D1D1F] tracking-tight">FlowSecure</div>
           <div className="text-[10px] uppercase tracking-widest text-[#727783] font-bold">Admin Panel</div>
         </div>
       </div>
@@ -93,11 +97,11 @@ function Sidebar() {
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 group",
                 active
-                  ? "bg-white text-[#00488d] shadow-[0_1px_4px_rgba(0,72,141,0.10)]"
-                  : "text-[#727783] hover:bg-white/70 hover:text-[#131b2e] hover:translate-x-0.5"
+                  ? "bg-[#F5F5F7] text-[#0071E3] shadow-[0_1px_4px_rgba(0,113,227,0.10)]"
+                  : "text-[#6E6E73] hover:bg-[#F5F5F7] hover:text-[#1D1D1F] hover:translate-x-0.5"
               )}
             >
-              <Icon className={cn("w-4 h-4 shrink-0", active ? "text-[#00488d]" : "text-[#b0b5c3] group-hover:text-[#00488d]")} />
+              <Icon className={cn("w-4 h-4 shrink-0", active ? "text-[#0071E3]" : "text-[#8E8E93] group-hover:text-[#0071E3]")} />
               {label}
             </Link>
           );
@@ -105,19 +109,19 @@ function Sidebar() {
       </div>
 
       {/* Bottom Actions */}
-      <div className="mt-auto border-t border-[#e8ecf8] pt-4 px-3 pb-5 space-y-2">
+      <div className="mt-auto border-t border-[#E5E5EA] pt-4 px-3 pb-5 space-y-2">
         <a
           href="/rider"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-[#727783] hover:bg-white/70 hover:text-[#131b2e] transition-all duration-150 group"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-[#6E6E73] hover:bg-[#F5F5F7] hover:text-[#1D1D1F] transition-all duration-150 group"
         >
-          <User className="w-4 h-4 shrink-0 text-[#b0b5c3] group-hover:text-[#00488d]" />
+          <User className="w-4 h-4 shrink-0 text-[#8E8E93] group-hover:text-[#0071E3]" />
           <span>Rider Portal</span>
           <span className="ml-auto text-[10px] text-[#b0b5c3] group-hover:text-[#727783]">↗</span>
         </a>
         <Link to="/" className="w-full block">
-          <button className="w-full py-2.5 px-4 bg-gradient-to-br from-[#00488d] to-[#005fb8] text-white rounded-xl font-semibold text-sm shadow-sm hover:shadow-md active:scale-[0.98] transition-all">
+          <button className="w-full py-2.5 px-4 bg-[#0071E3] text-white rounded-xl font-semibold text-sm shadow-sm hover:bg-[#0077ED] active:scale-[0.98] transition-all">
             ← Back to Home
           </button>
         </Link>
@@ -131,7 +135,7 @@ function RiderModal({ rider, onClose }: { rider: any; onClose: () => void }) {
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-[#131b2e]/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/45 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <motion.div
@@ -140,13 +144,13 @@ function RiderModal({ rider, onClose }: { rider: any; onClose: () => void }) {
         className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden"
       >
         {/* Modal Header */}
-        <div className="flex justify-between items-center px-7 py-5 bg-[#f2f3ff] border-b border-[#e8ecf8]">
+        <div className="flex justify-between items-center px-7 py-5 bg-[#F5F5F7] border-b border-[#E5E5EA]">
           <div>
             <div className="text-[10px] uppercase tracking-widest text-[#727783] font-bold mb-1">Rider Profile</div>
-            <h2 className="text-xl font-extrabold text-[#131b2e] font-['Manrope',sans-serif]">{rider.name}</h2>
+            <h2 className="text-xl font-extrabold text-[#1D1D1F]">{rider.name}</h2>
             <span className="text-xs font-mono text-[#727783]">ID: {rider.id}</span>
           </div>
-          <button onClick={onClose} className="p-2 bg-white rounded-full border border-[#e8ecf8] hover:bg-[#f2f3ff] transition-colors shadow-sm">
+          <button onClick={onClose} className="p-2 bg-white rounded-full border border-[#E5E5EA] hover:bg-[#F5F5F7] transition-colors shadow-sm">
             <X className="w-4 h-4 text-[#727783]" />
           </button>
         </div>
@@ -156,7 +160,7 @@ function RiderModal({ rider, onClose }: { rider: any; onClose: () => void }) {
           {/* Row 1 */}
           <div className="flex flex-col gap-1.5">
             <span className="text-[10px] uppercase font-bold text-[#727783] tracking-widest flex items-center gap-1.5"><Activity className="w-3.5 h-3.5" />Monthly Earnings</span>
-            <span className="text-2xl font-bold text-[#131b2e]">₹{(rider.earnings_monthly || 0).toLocaleString('en-IN')}</span>
+            <span className="text-2xl font-bold text-[#1D1D1F]">₹{(rider.earnings_monthly || 0).toLocaleString('en-IN')}</span>
           </div>
           <div className="flex flex-col gap-1.5">
             <span className="text-[10px] uppercase font-bold text-[#727783] tracking-widest flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" />Policy Status</span>
@@ -181,7 +185,7 @@ function RiderModal({ rider, onClose }: { rider: any; onClose: () => void }) {
           <div className="flex flex-col gap-1.5">
             <span className="text-[10px] uppercase font-bold text-[#727783] tracking-widest flex items-center gap-1.5"><Zap className="w-3.5 h-3.5" />Fraud Score</span>
             <div className="flex items-center gap-2 pt-0.5">
-              <div className="flex-1 h-2 bg-[#f2f3ff] rounded-full overflow-hidden border border-[#e8ecf8]">
+              <div className="flex-1 h-2 bg-[#F5F5F7] rounded-full overflow-hidden border border-[#E5E5EA]">
                 <div
                   className="h-full rounded-full transition-all"
                   style={{
@@ -190,7 +194,7 @@ function RiderModal({ rider, onClose }: { rider: any; onClose: () => void }) {
                   }}
                 />
               </div>
-              <span className="text-sm font-bold font-mono text-[#131b2e] w-8 text-right">{rider.fraud_score ?? '—'}</span>
+              <span className="text-sm font-bold font-mono text-[#1D1D1F] w-8 text-right">{rider.fraud_score ?? '—'}</span>
             </div>
           </div>
 
@@ -201,8 +205,8 @@ function RiderModal({ rider, onClose }: { rider: any; onClose: () => void }) {
               {[1,2,3,4,5].map(i => (
                 <div key={i} className={cn("w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold border",
                   i <= (rider.shield_level || 0)
-                    ? 'bg-[#00488d] text-white border-[#00488d]'
-                    : 'bg-[#f2f3ff] text-[#b0b5c3] border-[#e8ecf8]'
+                    ? 'bg-[#0071E3] text-white border-[#0071E3]'
+                    : 'bg-[#F5F5F7] text-[#8E8E93] border-[#E5E5EA]'
                 )}>{i}</div>
               ))}
             </div>
@@ -217,12 +221,12 @@ function RiderModal({ rider, onClose }: { rider: any; onClose: () => void }) {
           </div>
 
           {/* Location */}
-          <div className="col-span-2 flex flex-col gap-2 pt-4 border-t border-[#e8ecf8]">
+          <div className="col-span-2 flex flex-col gap-2 pt-4 border-t border-[#E5E5EA]">
             <span className="text-[10px] uppercase font-bold text-[#727783] tracking-widest flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" />Last Known Location</span>
-            <div className="flex justify-between items-center bg-[#f2f3ff] p-3.5 rounded-xl font-mono text-sm border border-[#e8ecf8]">
-              <span className="text-[#727783]">LAT: <span className="text-[#131b2e] font-semibold">{rider.lat?.toFixed(5) || 'Unknown'}</span></span>
-              <span className="text-[#727783]">Zone: <span className="text-[#131b2e] font-semibold">{rider.location || 'Unknown'}</span></span>
-              <span className="text-[#727783]">LNG: <span className="text-[#131b2e] font-semibold">{rider.lng?.toFixed(5) || 'Unknown'}</span></span>
+            <div className="flex justify-between items-center bg-[#F5F5F7] p-3.5 rounded-xl font-mono text-sm border border-[#E5E5EA]">
+              <span className="text-[#727783]">LAT: <span className="text-[#1D1D1F] font-semibold">{rider.lat?.toFixed(5) || 'Unknown'}</span></span>
+              <span className="text-[#727783]">Zone: <span className="text-[#1D1D1F] font-semibold">{rider.location || 'Unknown'}</span></span>
+              <span className="text-[#727783]">LNG: <span className="text-[#1D1D1F] font-semibold">{rider.lng?.toFixed(5) || 'Unknown'}</span></span>
             </div>
           </div>
         </div>
@@ -455,8 +459,9 @@ function AdminContent({ session }: { session: Session }) {
   const isAnalytics = location.pathname === '/admin/analytics';
   const isData      = location.pathname === '/admin/data';
   const isGraph     = location.pathname === '/admin/graph';
+  const isFraudDefense = location.pathname === '/admin/fraud-defense';
   const isClaims    = location.pathname === '/admin/claims';
-  const isSubPage   = isAnalytics || isData || isGraph || isClaims;
+  const isSubPage   = isAnalytics || isData || isGraph || isFraudDefense || isClaims;
 
   const userName   = session.user.user_metadata?.full_name
                   ?? session.user.user_metadata?.name
@@ -481,6 +486,10 @@ function AdminContent({ session }: { session: Session }) {
   const [claimsFilter, setClaimsFilter]   = useState<string>('all');
   const [claimsLoading, setClaimsLoading] = useState(false);
   const [reviewingId, setReviewingId]     = useState<number | null>(null);
+  const [showFilters, setShowFilters]     = useState(false);
+  const [cityTierFilter, setCityTierFilter] = useState<string>('all');
+  const [riderRiskFilter, setRiderRiskFilter] = useState<string>('all');
+  const [riderKycFilter, setRiderKycFilter] = useState<string>('all');
 
   const fetchAll = async () => {
     setLoading(true);
@@ -575,16 +584,83 @@ function AdminContent({ session }: { session: Session }) {
   const alertCities  = actuarial.filter(c => c.sustainability === 'watch' || c.sustainability === 'critical');
   const stpRate      = stats ? Math.min(99, 80 + Math.round((stats.active_policies / Math.max(stats.total_riders, 1)) * 15)) : 0;
 
-  const filteredActuarial = actuarial.filter(c =>
-    c.city.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-  const filteredRiders = riders.filter(r =>
-    r.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.id?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredActuarial = actuarial.filter(c => {
+    const matchesSearch = c.city.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesTier = cityTierFilter === 'all' || c.city_tier === cityTierFilter;
+    return matchesSearch && matchesTier;
+  });
+
+  const filteredRiders = riders.filter(r => {
+    const normalizedId = String(r.id ?? '').toLowerCase();
+    const normalizedName = String(r.name ?? '').toLowerCase();
+    const matchesSearch =
+      normalizedName.includes(searchQuery.toLowerCase()) ||
+      normalizedId.includes(searchQuery.toLowerCase());
+    const matchesRisk = riderRiskFilter === 'all' || r.status === riderRiskFilter;
+    const matchesKyc =
+      riderKycFilter === 'all' ||
+      (riderKycFilter === 'verified' && !!r.aadhaar_verified) ||
+      (riderKycFilter === 'pending' && !r.aadhaar_verified);
+    return matchesSearch && matchesRisk && matchesKyc;
+  });
+
+  const activeFilterCount = selectedCity
+    ? [riderRiskFilter, riderKycFilter].filter(v => v !== 'all').length
+    : [cityTierFilter].filter(v => v !== 'all').length;
+
+  const resetFilters = () => {
+    setCityTierFilter('all');
+    setRiderRiskFilter('all');
+    setRiderKycFilter('all');
+  };
+
+  const exportVisibleRows = () => {
+    const columns = selectedCity
+      ? [
+          ['Rider', 'Rider ID', 'Risk Status', 'Fraud Score', 'Shield', 'KYC', 'Policy', 'Monthly Earnings'],
+          ...filteredRiders.map((r: any) => [
+            r.name ?? 'Unknown',
+            String(r.id ?? ''),
+            r.status === 'normal' ? 'Clean' : (r.status ?? 'Unknown'),
+            String(r.fraud_score ?? ''),
+            String(r.shield_level ?? ''),
+            r.aadhaar_verified ? 'Verified' : 'Pending',
+            r.policy_status || 'Active',
+            String(Math.round(r.earnings_monthly || 0)),
+          ]),
+        ]
+      : [
+          ['City', 'Tier', 'Policies', 'Premium', 'Payout', 'Claims', 'BCR', 'Status'],
+          ...filteredActuarial.map(city => [
+            city.city,
+            TIER_BADGE[city.city_tier]?.text || city.city_tier,
+            String(city.total_policies),
+            String(city.premium_collected),
+            String(city.total_payout),
+            String(city.total_claims),
+            `${(city.avg_loss_ratio * 100).toFixed(1)}%`,
+            city.sustainability,
+          ]),
+        ];
+
+    const csv = columns
+      .map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const scope = selectedCity ? `${selectedCity.toLowerCase().replace(/\s+/g, '-')}-riders` : 'dashboard-cities';
+    link.href = url;
+    link.download = `flowsecure-${scope}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   return (
-    <div className="flex min-h-screen bg-[#faf8ff] text-[#131b2e]" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="flex min-h-screen bg-[#F5F5F7] text-[#1D1D1F]" style={{ fontFamily: APPLE_FONT_FAMILY, WebkitFontSmoothing: 'antialiased' }}>
       <Sidebar />
 
       {/* Rider Detail Modal */}
@@ -596,24 +672,12 @@ function AdminContent({ session }: { session: Session }) {
       <main className="ml-64 flex-1 flex flex-col min-w-0">
 
         {/* Top App Bar */}
-        <header className="sticky top-0 z-40 bg-[#faf8ff]/80 backdrop-blur-xl border-b border-[#e8ecf8]/80">
+        <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-[#E5E5EA]">
           <div className="flex justify-between items-center w-full px-8 py-3.5 max-w-7xl mx-auto">
             <div className="flex items-center gap-8">
-              <h1 className="text-lg font-bold tracking-tight text-[#131b2e]" style={{ fontFamily: "'Manrope', sans-serif" }}>
-                {isAnalytics ? 'Analytics' : isData ? 'Data Timeline' : isGraph ? 'Fraud Graph' : isClaims ? 'All Claims' : selectedCity ? `${selectedCity} — Rider Network` : 'Claims Center'}
+              <h1 className="text-lg font-bold tracking-tight text-[#1D1D1F]">
+                {isAnalytics ? 'Analytics' : isData ? 'Data Timeline' : isGraph ? 'Fraud Graph' : isFraudDefense ? 'Fraud Defense' : isClaims ? 'All Claims' : selectedCity ? `${selectedCity} — Rider Network` : 'Claims Center'}
               </h1>
-              {!isSubPage && (
-                <nav className="hidden md:flex items-center gap-6">
-                  {['Solutions','Claims','Risk Analysis'].map((t, i) => (
-                    <a key={t} href="#" className={cn(
-                      "text-sm py-1 transition-colors",
-                      i === 0
-                        ? "text-[#00488d] font-semibold border-b-2 border-[#00488d]"
-                        : "text-[#727783] hover:text-[#131b2e]"
-                    )}>{t}</a>
-                  ))}
-                </nav>
-              )}
             </div>
 
             <div className="flex items-center gap-3">
@@ -625,7 +689,7 @@ function AdminContent({ session }: { session: Session }) {
                     <input
                       value={searchQuery}
                       onChange={e => setSearchQuery(e.target.value)}
-                      className="pl-9 pr-4 py-2 bg-white ring-1 ring-[#c2c6d4]/30 focus:ring-2 focus:ring-[#00488d] rounded-full text-sm w-60 outline-none transition-all border-0"
+                      className="pl-9 pr-4 py-2 bg-white ring-1 ring-[#D2D2D7] focus:ring-2 focus:ring-[#0071E3] rounded-full text-sm w-60 outline-none transition-all border-0"
                       placeholder={selectedCity ? "Search riders..." : "Search cities..."}
                     />
                   </div>
@@ -633,23 +697,23 @@ function AdminContent({ session }: { session: Session }) {
                   <span className="text-xs text-[#b0b5c3] hidden md:block">Updated {lastRefresh.toLocaleTimeString()}</span>
                   <button
                     onClick={fetchAll} disabled={loading}
-                    className="p-2 text-[#727783] hover:text-[#00488d] hover:bg-white rounded-lg transition-all"
+                    className="p-2 text-[#727783] hover:text-[#0071E3] hover:bg-[#F5F5F7] rounded-lg transition-all"
                   >
                     <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
                   </button>
                 </>
               )}
               {/* User pill */}
-              <div className="flex items-center gap-2.5 pl-2 border-l border-[#e8ecf8]">
+              <div className="flex items-center gap-2.5 pl-2 border-l border-[#E5E5EA]">
                 {userAvatar ? (
-                  <img src={userAvatar} alt={userName} className="w-7 h-7 rounded-full object-cover ring-2 ring-[#e8ecf8]" />
+                  <img src={userAvatar} alt={userName} className="w-7 h-7 rounded-full object-cover ring-2 ring-[#E5E5EA]" />
                 ) : (
-                  <div className="w-7 h-7 rounded-full bg-[#0071E3] flex items-center justify-center text-white text-[10px] font-bold ring-2 ring-[#e8ecf8]">
+                  <div className="w-7 h-7 rounded-full bg-[#0071E3] flex items-center justify-center text-white text-[10px] font-bold ring-2 ring-[#E5E5EA]">
                     {initials}
                   </div>
                 )}
                 <div className="hidden md:flex flex-col leading-tight">
-                  <span className="text-xs font-semibold text-[#131b2e] max-w-[120px] truncate">{userName}</span>
+                  <span className="text-xs font-semibold text-[#1D1D1F] max-w-[120px] truncate">{userName}</span>
                   <span className="text-[10px] text-[#727783] max-w-[120px] truncate">{userEmail}</span>
                 </div>
                 <button
@@ -666,7 +730,7 @@ function AdminContent({ session }: { session: Session }) {
 
         {/* Page Content */}
         {isAnalytics && (
-          <div className="flex-1 bg-[#faf8ff] min-h-0">
+          <div className="flex-1 bg-[#F5F5F7] min-h-0">
             <ActuarialDashboard />
           </div>
         )}
@@ -678,6 +742,11 @@ function AdminContent({ session }: { session: Session }) {
         {isGraph && (
           <div className="flex-1 min-h-0">
             <FraudGraphPage />
+          </div>
+        )}
+        {isFraudDefense && (
+          <div className="flex-1 min-h-0">
+            <FraudDefense />
           </div>
         )}
 
@@ -701,8 +770,8 @@ function AdminContent({ session }: { session: Session }) {
                   className={cn(
                     "px-4 py-1.5 rounded-full text-xs font-bold border transition-all",
                     claimsFilter === key
-                      ? "bg-[#00488d] text-white border-[#00488d]"
-                      : "bg-white text-[#424752] border-[#e8ecf8] hover:border-[#00488d]"
+                      ? "bg-[#0071E3] text-white border-[#0071E3]"
+                      : "bg-white text-[#424752] border-[#E5E5EA] hover:border-[#0071E3]"
                   )}
                 >{label}</button>
               ))}
@@ -710,20 +779,20 @@ function AdminContent({ session }: { session: Session }) {
             </div>
 
             {/* Table */}
-            <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(19,27,46,0.06)] border border-[#e8ecf8]/60 overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-[#E5E5EA] overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-sm">
-                  <thead className="bg-[#faf8ff] text-[11px] font-bold text-[#b0b5c3] uppercase tracking-widest">
+                  <thead className="bg-[#F5F5F7] text-[11px] font-bold text-[#8E8E93] uppercase tracking-widest">
                     <tr>
-                      <th className="px-5 py-4 border-b border-[#e8ecf8]">ID</th>
-                      <th className="px-5 py-4 border-b border-[#e8ecf8]">Rider</th>
-                      <th className="px-5 py-4 border-b border-[#e8ecf8]">Zone</th>
-                      <th className="px-5 py-4 border-b border-[#e8ecf8]">Trigger</th>
-                      <th className="px-5 py-4 border-b border-[#e8ecf8]">Payout</th>
-                      <th className="px-5 py-4 border-b border-[#e8ecf8]">Fraud Score</th>
-                      <th className="px-5 py-4 border-b border-[#e8ecf8]">Time</th>
-                      <th className="px-5 py-4 border-b border-[#e8ecf8]">Status</th>
-                      <th className="px-5 py-4 border-b border-[#e8ecf8]">Action</th>
+                      <th className="px-5 py-4 border-b border-[#E5E5EA]">ID</th>
+                      <th className="px-5 py-4 border-b border-[#E5E5EA]">Rider</th>
+                      <th className="px-5 py-4 border-b border-[#E5E5EA]">Zone</th>
+                      <th className="px-5 py-4 border-b border-[#E5E5EA]">Trigger</th>
+                      <th className="px-5 py-4 border-b border-[#E5E5EA]">Payout</th>
+                      <th className="px-5 py-4 border-b border-[#E5E5EA]">Fraud Score</th>
+                      <th className="px-5 py-4 border-b border-[#E5E5EA]">Time</th>
+                      <th className="px-5 py-4 border-b border-[#E5E5EA]">Status</th>
+                      <th className="px-5 py-4 border-b border-[#E5E5EA]">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -744,14 +813,20 @@ function AdminContent({ session }: { session: Session }) {
                       };
                       const canReview = claim.status === 'pending_review' || claim.status === 'flagged';
                       return (
-                        <tr key={claim.id} className={cn("hover:bg-[#f2f3ff] transition-colors", i % 2 === 1 && "bg-[#faf8ff]/40")}>
+                        <tr key={claim.id} className={cn("hover:bg-[#F5F5F7] transition-colors", i % 2 === 1 && "bg-[#FBFBFD]")}>
                           <td className="px-5 py-3.5 font-mono text-xs text-[#727783]">#{claim.id}</td>
-                          <td className="px-5 py-3.5 font-semibold text-[#131b2e]">{claim.rider_name}</td>
+                          <td className="px-5 py-3.5">
+                            <div className="font-semibold text-[#1D1D1F]">{claim.rider_name}</div>
+                            <div className="text-[11px] text-[#727783]">
+                              Rider #{claim.rider_id}
+                              {claim.rider_phone ? ` · ${claim.rider_phone}` : ''}
+                            </div>
+                          </td>
                           <td className="px-5 py-3.5 text-[#424752] text-xs">{claim.zone}</td>
                           <td className="px-5 py-3.5">
-                            <span className="px-2 py-0.5 bg-[#f2f3ff] text-[#00488d] rounded text-xs font-bold capitalize">{claim.trigger}</span>
+                            <span className="px-2 py-0.5 bg-[#F0F7FF] text-[#0071E3] rounded text-xs font-bold capitalize">{claim.trigger}</span>
                           </td>
-                          <td className="px-5 py-3.5 font-mono text-xs font-semibold text-[#131b2e]">{fmt(claim.payout_amount || 0)}</td>
+                          <td className="px-5 py-3.5 font-mono text-xs font-semibold text-[#1D1D1F]">{fmt(claim.payout_amount || 0)}</td>
                           <td className="px-5 py-3.5">
                             <span className={cn(
                               "font-bold text-xs",
@@ -800,10 +875,10 @@ function AdminContent({ session }: { session: Session }) {
           {/* ── Bento Stats ── */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
             {/* Big Card */}
-            <div className="md:col-span-2 bg-white p-6 rounded-2xl shadow-[0_2px_12px_rgba(19,27,46,0.06)] border border-[#e8ecf8]/60 flex flex-col justify-between">
+            <div className="md:col-span-2 bg-white p-6 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-[#E5E5EA] flex flex-col justify-between">
               <div>
                 <span className="text-[10px] font-bold text-[#b0b5c3] uppercase tracking-widest mb-1 block">Total Premium Pool</span>
-                <h2 className="text-3xl font-extrabold text-[#131b2e] tracking-tight" style={{ fontFamily: "'Manrope', sans-serif" }}>
+                <h2 className="text-3xl font-extrabold text-[#1D1D1F] tracking-tight">
                   {loading ? '—' : fmt(totalPremium)}
                   <span className="text-sm font-normal text-[#b0b5c3] ml-2">across all cities</span>
                 </h2>
@@ -811,13 +886,13 @@ function AdminContent({ session }: { session: Session }) {
               <div className="mt-5 flex items-center gap-4">
                 <div className="flex -space-x-2">
                   {actuarial.slice(0, 3).map((c, i) => (
-                    <div key={i} className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-[#00488d]"
-                      style={{ background: ['#dae2fd','#d5e3fc','#f2f3ff'][i] }}>
+                    <div key={i} className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-[#0071E3]"
+                      style={{ background: ['#EAF4FF','#F0F7FF','#F5F5F7'][i] }}>
                       {c.city.charAt(0)}
                     </div>
                   ))}
                   {actuarial.length > 3 && (
-                    <div className="w-8 h-8 rounded-full border-2 border-white bg-[#f2f3ff] flex items-center justify-center text-[10px] font-bold text-[#727783]">+{actuarial.length - 3}</div>
+                    <div className="w-8 h-8 rounded-full border-2 border-white bg-[#F5F5F7] flex items-center justify-center text-[10px] font-bold text-[#727783]">+{actuarial.length - 3}</div>
                   )}
                 </div>
                 <span className="text-xs text-[#727783] font-medium italic">{actuarial.length} cities · PAN India Network</span>
@@ -825,10 +900,10 @@ function AdminContent({ session }: { session: Session }) {
             </div>
 
             {/* Avg Resolution */}
-            <div className="bg-[#f2f3ff] p-6 rounded-2xl border border-[#e8ecf8]/60">
-              <Zap className="w-5 h-5 text-[#00488d] mb-3" />
+            <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-[0_4px_24px_rgba(0,0,0,0.03)]">
+              <Zap className="w-5 h-5 text-[#0071E3] mb-3" />
               <span className="text-[10px] font-bold text-[#b0b5c3] uppercase tracking-widest block mb-1">Active Riders</span>
-              <h2 className="text-2xl font-bold text-[#131b2e]" style={{ fontFamily: "'Manrope', sans-serif" }}>
+              <h2 className="text-2xl font-bold text-[#1D1D1F]">
                 {loading ? '—' : (stats?.total_riders || 0).toLocaleString('en-IN')}
               </h2>
               <div className="mt-2 text-xs text-emerald-600 font-medium flex items-center gap-1">
@@ -837,10 +912,10 @@ function AdminContent({ session }: { session: Session }) {
             </div>
 
             {/* STP Rate */}
-            <div className="bg-[#f2f3ff] p-6 rounded-2xl border border-[#e8ecf8]/60">
+            <div className="bg-white p-6 rounded-2xl border border-[#E5E5EA] shadow-[0_4px_24px_rgba(0,0,0,0.03)]">
               <BarChart2 className="w-5 h-5 text-[#7b3200] mb-3" />
               <span className="text-[10px] font-bold text-[#b0b5c3] uppercase tracking-widest block mb-1">Active Policies</span>
-              <h2 className="text-2xl font-bold text-[#131b2e]" style={{ fontFamily: "'Manrope', sans-serif" }}>
+              <h2 className="text-2xl font-bold text-[#1D1D1F]">
                 {loading ? '—' : (stats?.active_policies || 0).toLocaleString('en-IN')}
               </h2>
               <div className="mt-2 text-xs text-[#727783] font-medium">Parametric coverage</div>
@@ -852,15 +927,15 @@ function AdminContent({ session }: { session: Session }) {
             <div className="space-y-0.5">
               {selectedCity ? (
                 <>
-                  <button onClick={() => { setSelectedCity(null); setSearchQuery(''); }} className="flex items-center gap-1.5 text-xs font-bold text-[#727783] hover:text-[#00488d] transition-colors uppercase tracking-widest mb-2">
+                  <button onClick={() => { setSelectedCity(null); setSearchQuery(''); }} className="flex items-center gap-1.5 text-xs font-bold text-[#727783] hover:text-[#0071E3] transition-colors uppercase tracking-widest mb-2">
                     <ArrowLeft className="w-3.5 h-3.5" /> Back to Cities
                   </button>
-                  <h3 className="text-lg font-bold text-[#131b2e]" style={{ fontFamily: "'Manrope', sans-serif" }}>{selectedCity} Riders</h3>
+                  <h3 className="text-lg font-bold text-[#1D1D1F]">{selectedCity} Riders</h3>
                   <p className="text-sm text-[#727783]">Active fleet management and risk inspection.</p>
                 </>
               ) : (
                 <>
-                  <h3 className="text-lg font-bold text-[#131b2e]" style={{ fontFamily: "'Manrope', sans-serif" }}>Operations Ledger</h3>
+                  <h3 className="text-lg font-bold text-[#1D1D1F]">Operations Ledger</h3>
                   <p className="text-sm text-[#727783]">Real-time management of PAN India parametric insurance coverage.</p>
                 </>
               )}
@@ -871,33 +946,126 @@ function AdminContent({ session }: { session: Session }) {
                   <AlertTriangle className="w-3.5 h-3.5" /> {alertCities.length} alert{alertCities.length > 1 ? 's' : ''}
                 </span>
               )}
-              <button className="flex items-center gap-2 px-4 py-2 bg-white border border-[#c2c6d4]/40 text-[#424752] rounded-xl text-sm font-semibold hover:bg-[#f2f3ff] transition-all shadow-sm">
-                <Filter className="w-4 h-4 text-[#b0b5c3]" /> Filter
-              </button>
-              <button className="flex items-center gap-2 px-4 py-2 bg-[#dae2fd] text-[#00468b] rounded-xl text-sm font-bold hover:opacity-90 transition-all active:scale-95">
+              <div className="relative">
+                <button
+                  onClick={() => setShowFilters(v => !v)}
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-[#D2D2D7] text-[#424752] rounded-xl text-sm font-semibold hover:bg-[#F5F5F7] transition-all shadow-sm"
+                >
+                  <Filter className="w-4 h-4 text-[#b0b5c3]" /> Filter
+                  {activeFilterCount > 0 && (
+                    <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#0071E3] text-white text-[10px] font-bold flex items-center justify-center">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </button>
+
+                {showFilters && (
+                  <div className="absolute right-0 mt-2 w-[300px] rounded-2xl border border-[#E5E5EA] bg-white shadow-[0_12px_30px_rgba(0,0,0,0.10)] p-4 z-20 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-[#1D1D1F]">Filter Table</p>
+                        <p className="text-xs text-[#727783]">
+                          {selectedCity ? `Refine riders in ${selectedCity}` : 'Refine the city operations table'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setShowFilters(false)}
+                        className="text-xs font-semibold text-[#727783] hover:text-[#0071E3]"
+                      >
+                        Close
+                      </button>
+                    </div>
+
+                    {!selectedCity ? (
+                      <div className="space-y-3">
+                        <label className="block">
+                          <span className="text-[11px] font-bold uppercase tracking-widest text-[#b0b5c3]">City Tier</span>
+                          <select
+                            value={cityTierFilter}
+                            onChange={e => setCityTierFilter(e.target.value)}
+                            className="mt-1 w-full rounded-xl border border-[#E5E5EA] bg-[#F5F5F7] px-3 py-2 text-sm outline-none focus:border-[#0071E3]"
+                          >
+                            <option value="all">All tiers</option>
+                            <option value="tier_1">Tier 1</option>
+                            <option value="tier_2">Tier 2</option>
+                            <option value="tier_3">Tier 3</option>
+                          </select>
+                        </label>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <label className="block">
+                          <span className="text-[11px] font-bold uppercase tracking-widest text-[#b0b5c3]">Risk Status</span>
+                          <select
+                            value={riderRiskFilter}
+                            onChange={e => setRiderRiskFilter(e.target.value)}
+                            className="mt-1 w-full rounded-xl border border-[#E5E5EA] bg-[#F5F5F7] px-3 py-2 text-sm outline-none focus:border-[#0071E3]"
+                          >
+                            <option value="all">All riders</option>
+                            <option value="normal">Clean</option>
+                            <option value="spoofing">Spoofing</option>
+                            <option value="attack">Attack</option>
+                          </select>
+                        </label>
+                        <label className="block">
+                          <span className="text-[11px] font-bold uppercase tracking-widest text-[#b0b5c3]">KYC</span>
+                          <select
+                            value={riderKycFilter}
+                            onChange={e => setRiderKycFilter(e.target.value)}
+                            className="mt-1 w-full rounded-xl border border-[#E5E5EA] bg-[#F5F5F7] px-3 py-2 text-sm outline-none focus:border-[#0071E3]"
+                          >
+                            <option value="all">All KYC states</option>
+                            <option value="verified">Verified</option>
+                            <option value="pending">Pending</option>
+                          </select>
+                        </label>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-1">
+                      <button
+                        onClick={resetFilters}
+                        className="text-sm font-semibold text-[#727783] hover:text-[#131b2e]"
+                      >
+                        Reset
+                      </button>
+                      <button
+                        onClick={() => setShowFilters(false)}
+                        className="px-4 py-2 rounded-xl bg-[#0071E3] text-white text-sm font-semibold hover:bg-[#0077ED] transition-colors"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={exportVisibleRows}
+                className="flex items-center gap-2 px-4 py-2 bg-[#dae2fd] text-[#00468b] rounded-xl text-sm font-bold hover:opacity-90 transition-all active:scale-95"
+              >
                 <Download className="w-4 h-4" /> Export
               </button>
             </div>
           </div>
 
           {/* ── Data Table ── */}
-          <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(19,27,46,0.06)] overflow-hidden border border-[#e8ecf8]/60">
+          <div className="bg-white rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.03)] overflow-hidden border border-[#E5E5EA]">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
 
                 {/* City Table */}
                 {!selectedCity && (
                   <>
-                    <thead className="bg-[#faf8ff] text-[11px] font-bold text-[#b0b5c3] uppercase tracking-widest">
+                    <thead className="bg-[#F5F5F7] text-[11px] font-bold text-[#8E8E93] uppercase tracking-widest">
                       <tr>
-                        <th className="px-6 py-4 border-b border-[#e8ecf8]">City</th>
-                        <th className="px-6 py-4 border-b border-[#e8ecf8]">Tier</th>
-                        <th className="px-6 py-4 border-b border-[#e8ecf8]">Policies</th>
-                        <th className="px-6 py-4 border-b border-[#e8ecf8]">Premium</th>
-                        <th className="px-6 py-4 border-b border-[#e8ecf8]">Payout</th>
-                        <th className="px-6 py-4 border-b border-[#e8ecf8]">Claims</th>
-                        <th className="px-6 py-4 border-b border-[#e8ecf8]">BCR</th>
-                        <th className="px-6 py-4 border-b border-[#e8ecf8] text-right">Status</th>
+                        <th className="px-6 py-4 border-b border-[#E5E5EA]">City</th>
+                        <th className="px-6 py-4 border-b border-[#E5E5EA]">Tier</th>
+                        <th className="px-6 py-4 border-b border-[#E5E5EA]">Policies</th>
+                        <th className="px-6 py-4 border-b border-[#E5E5EA]">Premium</th>
+                        <th className="px-6 py-4 border-b border-[#E5E5EA]">Payout</th>
+                        <th className="px-6 py-4 border-b border-[#E5E5EA]">Claims</th>
+                        <th className="px-6 py-4 border-b border-[#E5E5EA]">BCR</th>
+                        <th className="px-6 py-4 border-b border-[#E5E5EA] text-right">Status</th>
                       </tr>
                     </thead>
                     <tbody className="text-sm">
@@ -912,11 +1080,11 @@ function AdminContent({ session }: { session: Session }) {
                           key={i}
                           onClick={() => loadCityRiders(city.city)}
                           className={cn(
-                            "hover:bg-[#f2f3ff] transition-colors cursor-pointer group",
-                            i % 2 === 1 && "bg-[#faf8ff]/50"
+                            "hover:bg-[#F5F5F7] transition-colors cursor-pointer group",
+                            i % 2 === 1 && "bg-[#FBFBFD]"
                           )}
                         >
-                          <td className="px-6 py-4 font-semibold text-[#131b2e] group-hover:text-[#00488d] transition-colors">{city.city}</td>
+                          <td className="px-6 py-4 font-semibold text-[#1D1D1F] group-hover:text-[#0071E3] transition-colors">{city.city}</td>
                           <td className="px-6 py-4">
                             <span className={cn("px-2.5 py-0.5 rounded-full text-[11px] font-bold", TIER_BADGE[city.city_tier]?.cls)}>
                               {TIER_BADGE[city.city_tier]?.text || city.city_tier}
@@ -946,17 +1114,17 @@ function AdminContent({ session }: { session: Session }) {
                 {/* Riders Table */}
                 {selectedCity && (
                   <>
-                    <thead className="bg-[#faf8ff] text-[11px] font-bold text-[#b0b5c3] uppercase tracking-widest">
+                    <thead className="bg-[#F5F5F7] text-[11px] font-bold text-[#8E8E93] uppercase tracking-widest">
                       <tr>
-                        <th className="px-6 py-4 border-b border-[#e8ecf8]">Rider</th>
-                        <th className="px-6 py-4 border-b border-[#e8ecf8]">Rider ID</th>
-                        <th className="px-6 py-4 border-b border-[#e8ecf8]">Risk Status</th>
-                        <th className="px-6 py-4 border-b border-[#e8ecf8]">Fraud Score</th>
-                        <th className="px-6 py-4 border-b border-[#e8ecf8]">Shield</th>
-                        <th className="px-6 py-4 border-b border-[#e8ecf8]">KYC</th>
-                        <th className="px-6 py-4 border-b border-[#e8ecf8]">Policy</th>
-                        <th className="px-6 py-4 border-b border-[#e8ecf8] text-right">M. Earnings</th>
-                        <th className="px-6 py-4 border-b border-[#e8ecf8] text-right">Actions</th>
+                        <th className="px-6 py-4 border-b border-[#E5E5EA]">Rider</th>
+                        <th className="px-6 py-4 border-b border-[#E5E5EA]">Rider ID</th>
+                        <th className="px-6 py-4 border-b border-[#E5E5EA]">Risk Status</th>
+                        <th className="px-6 py-4 border-b border-[#E5E5EA]">Fraud Score</th>
+                        <th className="px-6 py-4 border-b border-[#E5E5EA]">Shield</th>
+                        <th className="px-6 py-4 border-b border-[#E5E5EA]">KYC</th>
+                        <th className="px-6 py-4 border-b border-[#E5E5EA]">Policy</th>
+                        <th className="px-6 py-4 border-b border-[#E5E5EA] text-right">M. Earnings</th>
+                        <th className="px-6 py-4 border-b border-[#E5E5EA] text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="text-sm">
@@ -970,8 +1138,8 @@ function AdminContent({ session }: { session: Session }) {
                         <tr
                           key={r.id}
                           className={cn(
-                            "hover:bg-[#f2f3ff] transition-colors cursor-pointer group",
-                            idx % 2 === 1 && "bg-[#faf8ff]/50"
+                            "hover:bg-[#F5F5F7] transition-colors cursor-pointer group",
+                            idx % 2 === 1 && "bg-[#FBFBFD]"
                           )}
                         >
                           <td className="px-6 py-4">
@@ -984,7 +1152,7 @@ function AdminContent({ session }: { session: Session }) {
                                 {r.name?.charAt(0) || 'R'}
                               </div>
                               <div className="flex flex-col">
-                                <span className="font-semibold text-[#131b2e] group-hover:text-[#00488d] transition-colors">{r.name}</span>
+                                <span className="font-semibold text-[#1D1D1F] group-hover:text-[#0071E3] transition-colors">{r.name}</span>
                                 {r.verdict && r.verdict !== 'Nominal Signal Pattern' && (
                                   <span className="text-[10px] text-red-500 font-medium truncate max-w-[140px]">{r.verdict}</span>
                                 )}
@@ -1005,7 +1173,7 @@ function AdminContent({ session }: { session: Session }) {
                           {/* Fraud Score — colored bar */}
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
-                              <div className="flex-1 h-1.5 bg-[#f2f3ff] rounded-full overflow-hidden border border-[#e8ecf8] w-16">
+                              <div className="flex-1 h-1.5 bg-[#F5F5F7] rounded-full overflow-hidden border border-[#E5E5EA] w-16">
                                 <div
                                   className="h-full rounded-full transition-all"
                                   style={{
@@ -1014,7 +1182,7 @@ function AdminContent({ session }: { session: Session }) {
                                   }}
                                 />
                               </div>
-                              <span className="text-xs font-bold font-mono text-[#131b2e] w-7 text-right">{r.fraud_score ?? '—'}</span>
+                              <span className="text-xs font-bold font-mono text-[#1D1D1F] w-7 text-right">{r.fraud_score ?? '—'}</span>
                             </div>
                           </td>
                           {/* Shield Level — tier dots */}
@@ -1023,8 +1191,8 @@ function AdminContent({ session }: { session: Session }) {
                               {[1,2,3,4,5].map(i => (
                                 <div key={i} className={cn("w-4 h-4 rounded flex items-center justify-center text-[8px] font-bold",
                                   i <= (r.shield_level || 0)
-                                    ? 'bg-[#00488d] text-white'
-                                    : 'bg-[#f2f3ff] text-[#b0b5c3] border border-[#e8ecf8]'
+                                    ? 'bg-[#0071E3] text-white'
+                                    : 'bg-[#F5F5F7] text-[#8E8E93] border border-[#E5E5EA]'
                                 )}>{i}</div>
                               ))}
                             </div>
@@ -1049,7 +1217,7 @@ function AdminContent({ session }: { session: Session }) {
                           <td className="px-6 py-4 text-right">
                             <button
                               onClick={() => setSelectedRider(r)}
-                              className="text-[#00488d] font-bold text-xs hover:underline decoration-2 underline-offset-4"
+                              className="text-[#0071E3] font-bold text-xs hover:underline decoration-2 underline-offset-4"
                             >
                               Details
                             </button>
@@ -1063,14 +1231,14 @@ function AdminContent({ session }: { session: Session }) {
             </div>
 
             {/* Pagination */}
-            <div className="px-6 py-4 bg-[#faf8ff]/50 border-t border-[#e8ecf8] flex items-center justify-between">
+            <div className="px-6 py-4 bg-[#F5F5F7] border-t border-[#E5E5EA] flex items-center justify-between">
               <span className="text-xs text-[#727783]">
                 Showing {selectedCity ? filteredRiders.length : filteredActuarial.length} entries
               </span>
               <div className="flex items-center gap-2">
-                <button className="p-1 text-[#b0b5c3] hover:text-[#00488d] transition-colors"><ChevronLeft className="w-5 h-5" /></button>
-                <button className="w-8 h-8 flex items-center justify-center bg-[#00488d] text-white text-xs font-bold rounded-lg">1</button>
-                <button className="p-1 text-[#b0b5c3] hover:text-[#00488d] transition-colors"><ChevronRight className="w-5 h-5" /></button>
+                <button className="p-1 text-[#8E8E93] hover:text-[#0071E3] transition-colors"><ChevronLeft className="w-5 h-5" /></button>
+                <button className="w-8 h-8 flex items-center justify-center bg-[#0071E3] text-white text-xs font-bold rounded-lg">1</button>
+                <button className="p-1 text-[#8E8E93] hover:text-[#0071E3] transition-colors"><ChevronRight className="w-5 h-5" /></button>
               </div>
             </div>
           </div>
@@ -1078,8 +1246,8 @@ function AdminContent({ session }: { session: Session }) {
           {/* ── Bottom Bento ── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             {/* Regional Risk CTA */}
-            <div className="lg:col-span-2 relative h-44 rounded-2xl overflow-hidden shadow-sm group cursor-pointer" onClick={() => window.location.href='/graph'}>
-              <div className="absolute inset-0 bg-gradient-to-br from-[#00488d] via-[#005fb8] to-[#0071E3]" />
+            <div className="lg:col-span-2 relative h-44 rounded-2xl overflow-hidden shadow-sm group cursor-pointer" onClick={() => window.location.href='/admin/graph'}>
+              <div className="absolute inset-0 bg-gradient-to-br from-[#0071E3] via-[#0A84FF] to-[#5AC8FA]" />
               <div className="absolute inset-0 opacity-10">
                 {[...Array(6)].map((_, i) => (
                   <div key={i} className="absolute rounded-full bg-white/20"
@@ -1090,7 +1258,7 @@ function AdminContent({ session }: { session: Session }) {
               <div className="relative flex flex-col justify-center p-8 text-white h-full">
                 <h4 className="text-xl font-bold mb-2" style={{ fontFamily: "'Manrope', sans-serif" }}>Regional Risk Profile</h4>
                 <p className="text-sm text-blue-100 max-w-xs">View localized exposure metrics and adjust parametric triggers based on real-time weather patterns.</p>
-                <button className="mt-4 w-fit px-5 py-2 bg-white text-[#00488d] font-bold text-xs rounded-xl hover:bg-blue-50 active:scale-95 transition-all">
+                <button className="mt-4 w-fit px-5 py-2 bg-white text-[#0071E3] font-bold text-xs rounded-xl hover:bg-blue-50 active:scale-95 transition-all">
                   Launch Risk Map →
                 </button>
               </div>
@@ -1114,26 +1282,13 @@ function AdminContent({ session }: { session: Session }) {
                     : 'All parametric triggers are within safe operating band. System healthy.'}
                 </p>
               </div>
-              <Link to="/fraud" className="text-xs font-bold underline decoration-2 underline-offset-4 mt-4 block text-[#783100] hover:text-[#341100]">
+              <Link to="/admin/fraud-defense" className="text-xs font-bold underline decoration-2 underline-offset-4 mt-4 block text-[#783100] hover:text-[#341100]">
                 Open Fraud Defense →
               </Link>
             </div>
           </div>
 
         </div>
-
-        {/* Footer */}
-        <footer className={cn("bg-[#faf8ff] py-10 border-t border-[#e8ecf8] mt-auto", isSubPage && "hidden")}>
-          <div className="w-full px-8 max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="text-sm font-bold text-[#424752]" style={{ fontFamily: "'Manrope', sans-serif" }}>FlowSecure</div>
-            <div className="flex flex-wrap justify-center gap-6">
-              {['Privacy Policy','Terms of Service','Security','Compliance'].map(link => (
-                <a key={link} href="#" className="text-[#727783] hover:text-[#131b2e] text-sm transition-colors">{link}</a>
-              ))}
-            </div>
-            <div className="text-xs text-[#b0b5c3]">© 2025 FlowSecure Insurtech Solutions.</div>
-          </div>
-        </footer>
       </main>
     </div>
   );

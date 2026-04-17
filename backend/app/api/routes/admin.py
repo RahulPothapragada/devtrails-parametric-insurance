@@ -2,15 +2,47 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, or_
 from datetime import datetime, timezone
 
 from app.core.database import get_db
-from app.models.models import Rider, Policy, Claim, TriggerReading, Zone, City, WeeklyLedger
+from app.models.models import Rider, Policy, Claim, TriggerReading, Zone, City, WeeklyLedger, ClaimStatus
 from app.schemas.schemas import AdminStats, ClaimOut
 import random
 
 router = APIRouter()
+
+
+def _parse_claim_status(status: str | None) -> ClaimStatus | None:
+    if not status or status == "all":
+        return None
+
+    try:
+        return ClaimStatus(status)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid claim status '{status}'") from exc
+
+
+def _claim_status_filter(status: str | None):
+    parsed_status = _parse_claim_status(status)
+    if parsed_status is None:
+        return None
+
+    if parsed_status == ClaimStatus.APPROVED:
+        # "Approved" is a business bucket in the UI: approved claims plus those
+        # that have already completed payout.
+        return Claim.status.in_([ClaimStatus.APPROVED, ClaimStatus.PAID])
+
+    if parsed_status == ClaimStatus.AUTO_APPROVED:
+        # Auto-approved claims are often immediately disbursed and transition to
+        # PAID, so keep them visible in this bucket using the fraud threshold
+        # that the claim engine uses for automatic approval.
+        return or_(
+            Claim.status == ClaimStatus.AUTO_APPROVED,
+            (Claim.status == ClaimStatus.PAID) & (func.coalesce(Claim.fraud_score, 0) <= 40),
+        )
+
+    return Claim.status == parsed_status
 
 
 @router.get("/stats", response_model=AdminStats)
@@ -66,9 +98,10 @@ async def all_claims(
     db: AsyncSession = Depends(get_db),
 ):
     """All claims for admin — optionally filter by status."""
+    status_filter = _claim_status_filter(status)
     q = select(Claim).order_by(desc(Claim.event_time))
-    if status and status != "all":
-        q = q.where(Claim.status == status)
+    if status_filter is not None:
+        q = q.where(status_filter)
     q = q.limit(limit).offset(offset)
     claims = (await db.execute(q)).scalars().all()
 
@@ -80,6 +113,7 @@ async def all_claims(
             "id": claim.id,
             "rider_id": claim.rider_id,
             "rider_name": rider.name if rider else "Unknown",
+            "rider_phone": rider.phone if rider else None,
             "city": zone.name.split("-")[0].strip() if zone else "Unknown",
             "zone": zone.name if zone else "Unknown",
             "trigger": claim.trigger_type.value if claim.trigger_type else "—",
@@ -134,8 +168,9 @@ async def review_claim(
     if claim.status.value not in ["pending_review", "flagged"]:
         raise HTTPException(status_code=400, detail="Claim already processed — cannot re-review")
 
-    claim.status = verdict
-    if verdict == "approved":
+    new_status = ClaimStatus.APPROVED if verdict == "approved" else ClaimStatus.DENIED
+    claim.status = new_status
+    if new_status == ClaimStatus.APPROVED:
         policy_result = await db.execute(select(Policy).where(Policy.id == claim.policy_id))
         policy = policy_result.scalar_one_or_none()
         trigger = claim.trigger_type.value if claim.trigger_type else "rainfall"

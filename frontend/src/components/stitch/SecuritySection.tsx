@@ -2,7 +2,8 @@ import { motion } from 'framer-motion';
 
 export function SecuritySection() {
   return (
-    <section id="security" className="py-48 px-6 bg-white flex items-center justify-center overflow-hidden">
+    <section className="relative py-48 px-6 bg-white flex items-center justify-center overflow-hidden">
+      <div id="security" className="absolute" style={{ top: '10rem' }} />
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }}
         whileInView={{ scale: 1, opacity: 1 }}
