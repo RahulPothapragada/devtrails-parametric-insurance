@@ -13,7 +13,6 @@ import type { Session } from '@supabase/supabase-js';
 import ActuarialDashboard from './ActuarialDashboard';
 import DataTimeline from './DataTimeline';
 import FraudGraphPage from './FraudGraphPage';
-import FraudDefense from './FraudDefense';
 
 import { API_BASE as API } from '@/lib/api';
 
@@ -66,7 +65,6 @@ const NAV_ITEMS = [
   { icon: FileTextIcon,    label: 'Claims',     to: '/admin/claims' },
   { icon: LineChart,       label: 'Analytics',  to: '/admin/analytics' },
   { icon: GitFork,         label: 'Fraud Graph',to: '/admin/graph' },
-  { icon: ShieldCheck,     label: 'Fraud Defense', to: '/admin/fraud-defense' },
   { icon: Database,        label: 'Data',       to: '/admin/data' },
 ];
 
@@ -77,11 +75,8 @@ function Sidebar() {
     <nav className="fixed left-0 top-0 h-full flex flex-col z-50 bg-white border-r border-[#E5E5EA] w-64">
       {/* Logo */}
       <div className="mb-8 px-4 pt-5 flex items-center gap-3">
-        <div className="w-8 h-8 bg-[#0071E3] rounded-lg flex items-center justify-center text-white shadow-sm">
-          <Shield className="w-4 h-4" />
-        </div>
         <div>
-          <div className="text-base font-black text-[#1D1D1F] tracking-tight">FlowSecure</div>
+          <div className="text-lg font-extrabold tracking-tight text-[#1D1D1F]">FlowSecure</div>
           <div className="text-[10px] uppercase tracking-widest text-[#727783] font-bold">Admin Panel</div>
         </div>
       </div>
@@ -322,10 +317,7 @@ function AdminLoginGate({ initialError = '', onDemoAccess }: { initialError?: st
         transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
         className="flex flex-col items-center mb-10"
       >
-        <div className="w-12 h-12 rounded-[14px] bg-[#0071E3] flex items-center justify-center mb-4 shadow-[0_4px_16px_rgba(0,113,227,0.30)]">
-          <Shield className="w-6 h-6 text-white" />
-        </div>
-        <p className="text-[13px] font-semibold tracking-widest text-[#86868B] uppercase">FlowSecure</p>
+        <p className="text-2xl font-extrabold tracking-tight text-[#1D1D1F] mb-2">FlowSecure</p>
       </motion.div>
 
       {/* Card */}
@@ -459,9 +451,8 @@ function AdminContent({ session }: { session: Session }) {
   const isAnalytics = location.pathname === '/admin/analytics';
   const isData      = location.pathname === '/admin/data';
   const isGraph     = location.pathname === '/admin/graph';
-  const isFraudDefense = location.pathname === '/admin/fraud-defense';
   const isClaims    = location.pathname === '/admin/claims';
-  const isSubPage   = isAnalytics || isData || isGraph || isFraudDefense || isClaims;
+  const isSubPage   = isAnalytics || isData || isGraph || isClaims;
 
   const userName   = session.user.user_metadata?.full_name
                   ?? session.user.user_metadata?.name
@@ -676,7 +667,7 @@ function AdminContent({ session }: { session: Session }) {
           <div className="flex justify-between items-center w-full px-8 py-3.5 max-w-7xl mx-auto">
             <div className="flex items-center gap-8">
               <h1 className="text-lg font-bold tracking-tight text-[#1D1D1F]">
-                {isAnalytics ? 'Analytics' : isData ? 'Data Timeline' : isGraph ? 'Fraud Graph' : isFraudDefense ? 'Fraud Defense' : isClaims ? 'All Claims' : selectedCity ? `${selectedCity} — Rider Network` : 'Claims Center'}
+                {isAnalytics ? 'Analytics' : isData ? 'Data Timeline' : isGraph ? 'Fraud Graph' : isClaims ? 'All Claims' : selectedCity ? `${selectedCity} — Rider Network` : 'Claims Center'}
               </h1>
             </div>
 
@@ -742,11 +733,6 @@ function AdminContent({ session }: { session: Session }) {
         {isGraph && (
           <div className="flex-1 min-h-0">
             <FraudGraphPage />
-          </div>
-        )}
-        {isFraudDefense && (
-          <div className="flex-1 min-h-0">
-            <FraudDefense />
           </div>
         )}
 

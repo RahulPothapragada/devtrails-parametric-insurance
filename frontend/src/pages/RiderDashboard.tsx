@@ -562,6 +562,7 @@ export default function RiderDashboard() {
           currency: order.currency,
           order_id: order.order_id,
           name: 'FlowSecure',
+          image: `${window.location.origin}/logo.png`,
           description: 'Weekly Parametric Income Protection',
           prefill: {
             name: order.rider_name,
@@ -703,9 +704,7 @@ export default function RiderDashboard() {
           <div className="max-w-md mx-auto mt-16">
             <Card className="flex flex-col gap-6 p-10">
               <div className="flex flex-col items-center text-center gap-3">
-                <div className="w-16 h-16 rounded-full bg-[#0071E3]/10 flex items-center justify-center">
-                  <User className="w-8 h-8 text-[#0071E3]" />
-                </div>
+                <p className="text-2xl font-extrabold tracking-tight text-[#1D1D1F]">FlowSecure</p>
                 <div>
                   <h3 className="text-3xl font-bold mb-2 tracking-tight">Access Dashboard</h3>
                   <p className="text-[#86868B]">Enter your registered phone number to receive an OTP.</p>

@@ -255,11 +255,8 @@ function Navbar({ currentEffect }: { currentEffect: WeatherType }) {
       style={{ fontFamily: appleFontFamily }}
     >
       <div className="w-full max-w-[1400px] mx-auto px-4 min-h-[3rem] py-2 flex items-center justify-between text-xs font-semibold tracking-wide text-[#1D1D1F]">
-        <Link to="/" className="flex items-center gap-2 group shrink-0 hover:text-[#0071E3] transition-colors">
-          <div className="w-7 h-7 rounded-lg bg-[#0071E3] flex items-center justify-center transition-transform group-hover:scale-105">
-            <span className="text-white font-bold text-lg leading-none">F</span>
-          </div>
-          <span className="text-sm font-bold tracking-tight hidden md:block">FLOWSECURE</span>
+        <Link to="/" className="text-lg font-extrabold tracking-tight text-[#1D1D1F] hover:text-[#0071E3] transition-colors shrink-0">
+          FlowSecure
         </Link>
 
         {/* Nav links */}
