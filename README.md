@@ -17,7 +17,7 @@ This unlocks the full admin panel: platform stats, live claim feed, fraud networ
 
 ---
 
-### Option A — Shell scripts (recommended)
+### Option A — macOS / Linux (shell scripts)
 
 ```bash
 # 1. Clone — git-lfs pulls the seeded DB (160MB) automatically
@@ -36,7 +36,27 @@ git lfs pull          # downloads flowsecure.db (~30s)
 # API docs → http://localhost:8000/docs
 ```
 
-### Option B — Docker (no Python/Node needed)
+### Option B — Windows (batch scripts)
+
+> Requires [Python 3.10+](https://python.org) and [Node.js 18+](https://nodejs.org). During Python install, check **"Add Python to PATH"**.
+
+```bat
+REM 1. Clone the repo
+git clone https://github.com/RahulPothapragada/devtrails-parametric-insurance.git
+cd devtrails-parametric-insurance
+git lfs pull
+
+REM 2. One-time install — double-click setup.bat OR run in Command Prompt:
+setup.bat
+
+REM 3. Start both servers — double-click start.bat OR:
+start.bat
+REM Frontend → http://localhost:5173  (opens in a new window)
+REM Backend  → http://localhost:8000  (opens in a new window)
+REM Close those two windows to stop the servers.
+```
+
+### Option C — Docker (Windows / macOS / Linux — no Python/Node needed)
 
 ```bash
 git clone https://github.com/RahulPothapragada/devtrails-parametric-insurance.git
@@ -46,18 +66,35 @@ docker-compose up --build
 # Backend  → http://localhost:8000
 ```
 
-### Option C — Manual (if git-lfs unavailable)
+### Option D — Manual (if git-lfs unavailable)
 
+**macOS / Linux:**
 ```bash
 git clone https://github.com/RahulPothapragada/devtrails-parametric-insurance.git
 cd devtrails-parametric-insurance/backend
-python -m venv venv && source venv/bin/activate
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 python -m app.mock_data.seed_db   # generates flowsecure.db (~30 seconds)
 uvicorn app.main:app --reload --port 8000
 
 # In a second terminal:
 cd ../frontend && npm install && npm run dev
+```
+
+**Windows (Command Prompt):**
+```bat
+git clone https://github.com/RahulPothapragada/devtrails-parametric-insurance.git
+cd devtrails-parametric-insurance\backend
+python -m venv venv
+venv\Scripts\activate.bat
+pip install -r requirements.txt
+python -m app.mock_data.seed_db
+uvicorn app.main:app --reload --port 8000
+
+REM In a second Command Prompt window:
+cd ..\frontend
+npm install
+npm run dev
 ```
 
 > **Zero configuration needed.** `.env` is committed with working SQLite URL + Razorpay test keys. No Postgres, no Redis, no external services required.
