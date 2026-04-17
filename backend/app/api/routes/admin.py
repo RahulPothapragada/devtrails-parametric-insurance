@@ -15,7 +15,7 @@ router = APIRouter()
 
 @router.get("/stats", response_model=AdminStats)
 async def admin_stats(db: AsyncSession = Depends(get_db)):
-    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
     total_riders = (await db.execute(select(func.count(Rider.id)))).scalar() or 0
     active_policies = (await db.execute(
@@ -435,7 +435,7 @@ async def fraud_network_summary(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/maps/network")
-async def get_map_network(city_name: str, limit: int = 400, db: AsyncSession = Depends(get_db)):
+async def get_map_network(city_name: str, limit: int = 60, db: AsyncSession = Depends(get_db)):
     """Fetch live riders from the database organically scattered around their Zone centers."""
     city_result = await db.execute(select(City).where(City.name == city_name))
     city = city_result.scalar_one_or_none()
@@ -519,7 +519,13 @@ async def get_map_network(city_name: str, limit: int = 400, db: AsyncSession = D
             "risk": risk,
             "status": status,
             "verdict": verdict,
-            "location": zone.name
+            "location": zone.name,
+            # Rider profile fields for the detail modal
+            "earnings_monthly": round(r.avg_weekly_earnings * 4.33),
+            "policy_status": "Active" if not r.is_suspicious else "Flagged",
+            "fraud_score": round(r.fraud_score, 1),
+            "shield_level": r.shield_level,
+            "aadhaar_verified": r.aadhaar_verified,
         })
         
     return {"city_center": [city.lat, city.lng], "nodes": nodes, "links": links}

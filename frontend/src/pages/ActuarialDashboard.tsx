@@ -23,13 +23,13 @@ interface CityData {
 
 // ─── Config ───────────────────────────────────────────────────────
 const STATUS_CFG: Record<HealthStatus, { color: string; label: string; bg: string; border: string }> = {
-  healthy:  { color: '#10a37f', label: 'HEALTHY',       bg: 'rgba(16,163,127,0.12)',  border: 'rgba(16,163,127,0.30)' },
-  optimal:  { color: '#0ea5e9', label: 'OPTIMAL',       bg: 'rgba(14,165,233,0.12)',  border: 'rgba(14,165,233,0.30)' },
-  watch:    { color: '#f59e0b', label: '⚡ WATCH',      bg: 'rgba(245,158,11,0.12)',  border: 'rgba(245,158,11,0.40)' },
-  critical: { color: '#ef4444', label: '🚨 SUSPENDED',  bg: 'rgba(239,68,68,0.15)',   border: 'rgba(239,68,68,0.50)' },
+  healthy:  { color: '#10a37f', label: 'HEALTHY',       bg: 'rgba(16,163,127,0.10)',  border: 'rgba(16,163,127,0.25)' },
+  optimal:  { color: '#0ea5e9', label: 'OPTIMAL',       bg: 'rgba(14,165,233,0.10)',  border: 'rgba(14,165,233,0.25)' },
+  watch:    { color: '#f59e0b', label: '⚡ WATCH',      bg: 'rgba(245,158,11,0.10)',  border: 'rgba(245,158,11,0.35)' },
+  critical: { color: '#ef4444', label: '🚨 SUSPENDED',  bg: 'rgba(239,68,68,0.10)',   border: 'rgba(239,68,68,0.35)' },
 };
 const TIER_LABEL: Record<Tier, string>  = { tier_1: 'Metro', tier_2: 'Major City', tier_3: 'Emerging' };
-const TIER_COLOR: Record<Tier, string>  = { tier_1: '#a78bfa', tier_2: '#60a5fa', tier_3: '#34d399' };
+const TIER_COLOR: Record<Tier, string>  = { tier_1: '#7c3aed', tier_2: '#2563eb', tier_3: '#059669' };
 
 // Static lookups not in backend
 const STATE_MAP: Record<string, string> = {
@@ -45,6 +45,9 @@ function getStatus(lr: number): HealthStatus {
   if (lr > 0.55) return 'optimal';
   return 'healthy';
 }
+
+// ─── Shared light card class ───────────────────────────────────────
+const CARD = 'bg-white rounded-2xl shadow-[0_2px_12px_rgba(19,27,46,0.06)] border border-[#e8ecf8]';
 
 // ─── Sub-components ────────────────────────────────────────────────
 
@@ -64,23 +67,23 @@ function LRBar({ lr, status }: { lr: number; status: HealthStatus }) {
   const pct = Math.min(lr * 100, 100);
   const cfg = STATUS_CFG[status];
   return (
-    <div className="relative w-full h-2.5 bg-white/5 rounded-full overflow-visible mt-1 mb-3">
+    <div className="relative w-full h-2.5 bg-[#f2f3ff] rounded-full overflow-visible mt-1 mb-3">
       {[55, 70, 85].map(p => (
         <div key={p} className="absolute top-0 bottom-0 w-px"
-          style={{ left: `${p}%`, background: p === 85 ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.1)' }} />
+          style={{ left: `${p}%`, background: p === 85 ? 'rgba(239,68,68,0.45)' : 'rgba(19,27,46,0.10)' }} />
       ))}
       <motion.div
         initial={{ width: 0 }}
         animate={{ width: `${pct}%` }}
         transition={{ duration: 1.2, ease: 'easeOut' }}
         className="h-full rounded-full"
-        style={{ background: `linear-gradient(to right, #10a37f44, ${cfg.color})` }}
+        style={{ background: `linear-gradient(to right, ${cfg.color}44, ${cfg.color})` }}
       />
       <motion.div
         initial={{ left: '0%' }}
         animate={{ left: `${Math.min(pct - 1, 97)}%` }}
         transition={{ duration: 1.2, ease: 'easeOut' }}
-        className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-[#0f0f11] shadow-lg"
+        className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-white shadow-sm"
         style={{ backgroundColor: cfg.color }}
       />
     </div>
@@ -95,25 +98,25 @@ function CityCard({ city, selected, onClick }: { city: CityData; selected: boole
       onClick={onClick}
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.99 }}
-      className="glass-panel p-5 cursor-pointer transition-all relative overflow-hidden"
+      className={`${CARD} p-5 cursor-pointer transition-all relative overflow-hidden`}
       style={{
-        borderColor: selected ? cfg.color : 'rgba(255,255,255,0.06)',
-        background: selected ? cfg.bg : undefined,
+        borderColor: selected ? cfg.color : '#e8ecf8',
+        background: selected ? cfg.bg : 'white',
         borderWidth: selected ? '1.5px' : '1px',
       }}
     >
       {city.status === 'critical' && (
         <motion.div
-          animate={{ opacity: [0.2, 0.5, 0.2] }}
+          animate={{ opacity: [0.15, 0.35, 0.15] }}
           transition={{ repeat: Infinity, duration: 2 }}
-          className="absolute inset-0 rounded-xl pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse at top right, rgba(239,68,68,0.12), transparent 70%)' }}
+          className="absolute inset-0 rounded-2xl pointer-events-none"
+          style={{ background: 'radial-gradient(ellipse at top right, rgba(239,68,68,0.08), transparent 70%)' }}
         />
       )}
       <div className="flex justify-between items-start mb-1">
         <div>
-          <h3 className="font-semibold text-white/90 text-sm leading-tight">{city.name}</h3>
-          <p className="text-[11px] text-gray-500 mt-0.5">{city.state}</p>
+          <h3 className="font-semibold text-[#131b2e] text-sm leading-tight">{city.name}</h3>
+          <p className="text-[11px] text-[#b0b5c3] mt-0.5">{city.state}</p>
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <span className="text-[10px] font-semibold" style={{ color: TIER_COLOR[city.tier] }}>
@@ -123,7 +126,7 @@ function CityCard({ city, selected, onClick }: { city: CityData; selected: boole
         </div>
       </div>
       <div className="flex justify-between items-center text-xs mt-3">
-        <span className="text-gray-500">Loss Ratio</span>
+        <span className="text-[#727783]">Loss Ratio</span>
         <span className="font-mono font-bold" style={{ color: cfg.color }}>
           {(city.lr * 100).toFixed(1)}%
         </span>
@@ -136,8 +139,8 @@ function CityCard({ city, selected, onClick }: { city: CityData; selected: boole
           { label: 'Payout', val: `₹${(city.totalPayout / 100000).toFixed(1)}L` },
         ].map(m => (
           <div key={m.label} className="text-center">
-            <p className="text-[9px] text-gray-600 uppercase tracking-widest">{m.label}</p>
-            <p className="text-xs font-mono font-bold text-white/80 mt-0.5">{m.val}</p>
+            <p className="text-[9px] text-[#b0b5c3] uppercase tracking-widest">{m.label}</p>
+            <p className="text-xs font-mono font-bold text-[#424752] mt-0.5">{m.val}</p>
           </div>
         ))}
       </div>
@@ -154,11 +157,11 @@ function DetailPanel({ city, trendLoading, onClose }: { city: CityData; trendLoa
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
     return (
-      <div className="glass-panel p-3 text-xs space-y-1 border border-white/10">
-        <p className="font-semibold text-white/80">{label}</p>
+      <div className={`${CARD} p-3 text-xs space-y-1`}>
+        <p className="font-semibold text-[#131b2e]">{label}</p>
         <p style={{ color: '#10a37f' }}>Premium: ₹{payload[0]?.payload?.premium?.toLocaleString()}</p>
         <p style={{ color: cfg.color }}>Payout: ₹{payload[0]?.payload?.payout?.toLocaleString()}</p>
-        <p className="text-gray-400">Loss Ratio: {(payload[0]?.payload?.lr * 100).toFixed(1)}%</p>
+        <p className="text-[#727783]">Loss Ratio: {(payload[0]?.payload?.lr * 100).toFixed(1)}%</p>
       </div>
     );
   };
@@ -171,39 +174,41 @@ function DetailPanel({ city, trendLoading, onClose }: { city: CityData; trendLoa
       transition={{ duration: 0.35 }}
       className="overflow-hidden"
     >
-      <div className="glass-panel p-6 mt-0 border-t-2" style={{ borderColor: cfg.color }}>
+      <div className={`${CARD} p-6 mt-0 border-t-2`} style={{ borderTopColor: cfg.color }}>
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h3 className="text-lg font-bold text-white/90">{city.name} — 8-Week Actuarial Trend</h3>
-            <p className="text-xs text-gray-400 mt-1">
+            <h3 className="text-lg font-bold text-[#131b2e]" style={{ fontFamily: "'Manrope', sans-serif" }}>
+              {city.name} — 8-Week Trend
+            </h3>
+            <p className="text-xs text-[#727783] mt-1">
               {city.state} · {TIER_LABEL[city.tier]} · Avg BCR: <span style={{ color: cfg.color }}>{(city.bcr * 100).toFixed(1)}%</span>
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
-            <X className="w-4 h-4 text-gray-400" />
+          <button onClick={onClose} className="p-1.5 rounded-lg bg-[#f2f3ff] hover:bg-[#e8ecf8] border border-[#e8ecf8] transition-colors">
+            <X className="w-4 h-4 text-[#727783]" />
           </button>
         </div>
 
         {trendLoading || city.trend.length === 0 ? (
-          <div className="h-[220px] flex items-center justify-center text-gray-500 text-sm">
+          <div className="h-[220px] flex items-center justify-center text-[#b0b5c3] text-sm">
             {trendLoading ? 'Loading trend data…' : 'No trend data available'}
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
-              <p className="text-xs text-gray-500 mb-3">Loss Ratio Trend (red line = 85% suspension threshold)</p>
+              <p className="text-xs text-[#b0b5c3] mb-3">Loss Ratio Trend (red line = 85% suspension threshold)</p>
               <div className="h-[220px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={city.trend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="lrGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor={cfg.color} stopOpacity={0.3} />
+                        <stop offset="5%"  stopColor={cfg.color} stopOpacity={0.2} />
                         <stop offset="95%" stopColor={cfg.color} stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                    <XAxis dataKey="week" stroke="#52525b" fontSize={11} tickLine={false} axisLine={false} />
-                    <YAxis domain={[0, 1.1]} stroke="#52525b" fontSize={11} tickLine={false} axisLine={false}
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e8ecf8" vertical={false} />
+                    <XAxis dataKey="week" stroke="#b0b5c3" fontSize={11} tickLine={false} axisLine={false} />
+                    <YAxis domain={[0, 1.1]} stroke="#b0b5c3" fontSize={11} tickLine={false} axisLine={false}
                       tickFormatter={(v: number) => `${(v * 100).toFixed(0)}%`} />
                     <Tooltip content={<CustomTooltip />} />
                     <ReferenceLine y={0.85} stroke="#ef4444" strokeDasharray="4 4" strokeWidth={1.5}
@@ -219,8 +224,8 @@ function DetailPanel({ city, trendLoading, onClose }: { city: CityData; trendLoa
             </div>
 
             <div className="flex flex-col gap-4">
-              <div className="glass-panel p-4">
-                <p className="text-xs text-gray-500 mb-3 uppercase tracking-wider">Payout Area Split</p>
+              <div className={`${CARD} p-4`}>
+                <p className="text-xs text-[#b0b5c3] mb-3 uppercase tracking-wider">Payout Area Split</p>
                 {[
                   { label: 'Urban', pct: city.urbanPct, color: '#0ea5e9' },
                   { label: 'Semi-Urban', pct: city.semiUrbanPct, color: '#f59e0b' },
@@ -228,10 +233,10 @@ function DetailPanel({ city, trendLoading, onClose }: { city: CityData; trendLoa
                 ].map(a => (
                   <div key={a.label} className="mb-2.5">
                     <div className="flex justify-between text-xs mb-1">
-                      <span className="text-gray-400">{a.label}</span>
+                      <span className="text-[#727783]">{a.label}</span>
                       <span className="font-mono" style={{ color: a.color }}>{a.pct.toFixed(0)}%</span>
                     </div>
-                    <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-[#f2f3ff] rounded-full overflow-hidden">
                       <motion.div initial={{ width: 0 }} animate={{ width: `${a.pct}%` }}
                         transition={{ duration: 1, delay: 0.2 }}
                         className="h-full rounded-full" style={{ background: a.color }} />
@@ -240,7 +245,7 @@ function DetailPanel({ city, trendLoading, onClose }: { city: CityData; trendLoa
                 ))}
               </div>
 
-              <div className="glass-panel p-4 space-y-3">
+              <div className={`${CARD} p-4 space-y-3`}>
                 {[
                   { label: '8-Wk Premium Pool', val: `₹${(city.totalPremium / 100000).toFixed(2)}L` },
                   { label: '8-Wk Claims Paid',  val: `₹${(city.totalPayout  / 100000).toFixed(2)}L` },
@@ -248,8 +253,8 @@ function DetailPanel({ city, trendLoading, onClose }: { city: CityData; trendLoa
                   { label: 'Avg Claim Size',      val: city.totalClaims > 0 ? `₹${Math.round(city.totalPayout / city.totalClaims).toLocaleString()}` : '—' },
                 ].map(s => (
                   <div key={s.label} className="flex justify-between items-center">
-                    <span className="text-xs text-gray-500">{s.label}</span>
-                    <span className="text-xs font-mono font-bold text-white/80">{s.val}</span>
+                    <span className="text-xs text-[#727783]">{s.label}</span>
+                    <span className="text-xs font-mono font-bold text-[#424752]">{s.val}</span>
                   </div>
                 ))}
               </div>
@@ -293,14 +298,14 @@ function StressTestPanel() {
   };
 
   return (
-    <div className="glass-panel p-6">
+    <div className={`${CARD} p-6`}>
       <div className="flex justify-between items-start mb-4">
         <div>
-          <h2 className="text-lg font-bold text-white/90 flex items-center gap-2">
-            <Zap className="w-5 h-5 text-amber-400" />
+          <h2 className="text-lg font-bold text-[#131b2e] flex items-center gap-2" style={{ fontFamily: "'Manrope', sans-serif" }}>
+            <Zap className="w-5 h-5 text-amber-500" />
             Monsoon Stress Test Simulator
           </h2>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-[#727783] mt-1">
             Projects Loss Ratios under a 14-day extreme monsoon scenario (IMD worst-case: 300mm/6hrs, Jul 2024)
           </p>
         </div>
@@ -308,10 +313,10 @@ function StressTestPanel() {
           <button
             onClick={handleRun}
             disabled={loading}
-            className="px-4 py-2 rounded-lg text-sm font-semibold bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 transition-all flex items-center gap-2 disabled:opacity-50"
+            className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100 transition-all flex items-center gap-2 disabled:opacity-50"
           >
             {loading ? (
-              <><span className="animate-spin w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full" />Running…</>
+              <><span className="animate-spin w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full" />Running…</>
             ) : (
               <><span>🌧️</span> Run Stress Test</>
             )}
@@ -319,7 +324,7 @@ function StressTestPanel() {
         )}
         {ran && (
           <button onClick={() => { setRan(false); setResults([]); }}
-            className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+            className="text-xs text-[#727783] hover:text-[#131b2e] transition-colors">
             Reset
           </button>
         )}
@@ -330,13 +335,13 @@ function StressTestPanel() {
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}>
 
-            <div className="mb-4 p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center gap-3">
-              <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
+            <div className="mb-4 p-4 rounded-xl bg-red-50 border border-red-200 flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
               <div>
-                <p className="text-sm font-semibold text-red-400">
+                <p className="text-sm font-semibold text-red-600">
                   {suspendCount} of {results.length} cities would trigger enrolment suspension
                 </p>
-                <p className="text-xs text-gray-400 mt-0.5">
+                <p className="text-xs text-[#727783] mt-0.5">
                   {scenario}
                 </p>
               </div>
@@ -345,40 +350,40 @@ function StressTestPanel() {
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-gray-500 uppercase tracking-widest border-b border-white/5">
-                    <th className="py-2 text-left">City</th>
-                    <th className="py-2 text-left">Tier</th>
-                    <th className="py-2 text-right">Current LR</th>
-                    <th className="py-2 text-right">Monsoon Mult</th>
-                    <th className="py-2 text-right">Projected LR</th>
-                    <th className="py-2 text-center">Outcome</th>
+                  <tr className="text-[#b0b5c3] uppercase tracking-widest border-b border-[#e8ecf8]">
+                    <th className="py-2 text-left font-bold">City</th>
+                    <th className="py-2 text-left font-bold">Tier</th>
+                    <th className="py-2 text-right font-bold">Current LR</th>
+                    <th className="py-2 text-right font-bold">Monsoon Mult</th>
+                    <th className="py-2 text-right font-bold">Projected LR</th>
+                    <th className="py-2 text-center font-bold">Outcome</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5">
+                <tbody className="divide-y divide-[#e8ecf8]">
                   {results.map((r, i) => {
                     const stressColor = r.stress_lr > 0.85 ? '#ef4444' : r.stress_lr > 0.70 ? '#f59e0b' : '#0ea5e9';
-                    const tierColor = TIER_COLOR[(r.city_tier as Tier)] || '#94a3b8';
+                    const tierColor = TIER_COLOR[(r.city_tier as Tier)] || '#727783';
                     const tierLabel = TIER_LABEL[(r.city_tier as Tier)] || r.city_tier;
                     return (
                       <motion.tr key={r.city}
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: i * 0.04 }}
-                        className={r.stress_lr > 0.85 ? 'bg-red-500/5' : ''}>
-                        <td className="py-2.5 font-medium text-white/80">{r.city}</td>
+                        className={r.stress_lr > 0.85 ? 'bg-red-50/50' : ''}>
+                        <td className="py-2.5 font-medium text-[#131b2e]">{r.city}</td>
                         <td className="py-2.5" style={{ color: tierColor }}>{tierLabel}</td>
-                        <td className="py-2.5 text-right font-mono text-gray-400">{(r.current_lr * 100).toFixed(1)}%</td>
-                        <td className="py-2.5 text-right font-mono text-amber-400">×{r.monsoon_multiplier}</td>
+                        <td className="py-2.5 text-right font-mono text-[#727783]">{(r.current_lr * 100).toFixed(1)}%</td>
+                        <td className="py-2.5 text-right font-mono text-amber-600">×{r.monsoon_multiplier}</td>
                         <td className="py-2.5 text-right font-mono font-bold" style={{ color: stressColor }}>
                           {(r.stress_lr * 100).toFixed(1)}%
                         </td>
                         <td className="py-2.5 text-center">
                           {r.stress_lr > 0.85 ? (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/30">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-600 border border-red-200">
                               {r.would_flip_to_suspended ? '🆕 SUSPEND' : '🚨 CRITICAL'}
                             </span>
                           ) : (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700">
                               {STATUS_CFG[getStatus(r.stress_lr)].label}
                             </span>
                           )}
@@ -390,7 +395,7 @@ function StressTestPanel() {
               </table>
             </div>
 
-            <p className="text-[10px] text-gray-600 mt-4">
+            <p className="text-[10px] text-[#b0b5c3] mt-4">
               * Multipliers sourced from IMD historical event data (2018–2024). BCR target: 0.55–0.70. Suspension threshold: LR &gt; 0.85.
             </p>
           </motion.div>
@@ -403,6 +408,7 @@ function StressTestPanel() {
 // ─── Main Page ─────────────────────────────────────────────────────
 export default function ActuarialDashboard() {
   const [cities, setCities] = useState<CityData[]>([]);
+  const [totalRiders, setTotalRiders] = useState<number>(0);
   const [dataLoading, setDataLoading] = useState(true);
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
   const [trendLoading, setTrendLoading] = useState(false);
@@ -411,8 +417,15 @@ export default function ActuarialDashboard() {
   const fetchCities = async () => {
     setDataLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/admin/actuarial`);
-      const data = await res.json();
+      const [actuarialRes, statsRes] = await Promise.all([
+        fetch(`${API_BASE}/admin/actuarial`),
+        fetch(`${API_BASE}/admin/stats`),
+      ]);
+      const data = await actuarialRes.json();
+      if (statsRes.ok) {
+        const stats = await statsRes.json();
+        setTotalRiders(stats.total_riders || 0);
+      }
       const all: any[] = [
         ...(data.tier_breakdown?.tier_1 || []),
         ...(data.tier_breakdown?.tier_2 || []),
@@ -453,8 +466,10 @@ export default function ActuarialDashboard() {
     try {
       const res = await fetch(`${API_BASE}/admin/actuarial/${encodeURIComponent(cityName)}`);
       const data = await res.json();
-      const trend: WeekPoint[] = (data.weekly_trend || []).map((w: any, i: number) => ({
-        week: `W${i + 1}`,
+      const trend: WeekPoint[] = (data.weekly_trend || []).map((w: any) => ({
+        week: w.week_start
+          ? new Date(w.week_start).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+          : '—',
         lr: w.loss_ratio,
         premium: Math.round(w.premium_collected),
         payout: Math.round(w.total_payout),
@@ -491,7 +506,7 @@ export default function ActuarialDashboard() {
   const tier3 = cities.filter(c => c.tier === 'tier_3');
 
   return (
-    <div className="w-full max-w-7xl mx-auto p-4 md:p-6">
+    <div className="w-full max-w-7xl mx-auto p-4 md:p-6" style={{ fontFamily: "'Inter', sans-serif" }}>
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
         className="flex flex-col gap-6 pb-12">
 
@@ -500,19 +515,19 @@ export default function ActuarialDashboard() {
           {suspendedCities.length > 0 && (
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="bg-red-500/10 border border-red-500/40 rounded-xl px-5 py-3.5 flex items-center gap-3">
+              className="bg-red-50 border border-red-200 rounded-xl px-5 py-3.5 flex items-center gap-3">
               <motion.div animate={{ scale: [1, 1.15, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}>
-                <AlertTriangle className="w-5 h-5 text-red-400" />
+                <AlertTriangle className="w-5 h-5 text-red-500" />
               </motion.div>
               <div className="flex-1">
-                <span className="text-sm font-semibold text-red-400">
+                <span className="text-sm font-semibold text-red-600">
                   ⚠️ New enrolments suspended in {suspendedCities.map(c => c.name).join(', ')}
                 </span>
-                <span className="text-xs text-gray-400 ml-2">
+                <span className="text-xs text-[#727783] ml-2">
                   — Loss Ratio {suspendedCities.map(c => `${(c.lr * 100).toFixed(0)}%`).join(', ')} exceeds 85% threshold
                 </span>
               </div>
-              <span className="text-[10px] font-mono text-red-500/80 bg-red-500/10 px-2 py-1 rounded">
+              <span className="text-[10px] font-mono text-red-600 bg-red-100 border border-red-200 px-2 py-1 rounded-lg">
                 AUTO-TRIGGERED
               </span>
             </motion.div>
@@ -522,14 +537,18 @@ export default function ActuarialDashboard() {
         {/* ── Header ── */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-white/90 mb-1.5">Actuarial Command Center</h1>
-            <p className="text-gray-400 text-sm">BCR · Loss Ratio · Sustainability monitoring across all {cities.length} cities, 3 tiers</p>
+            <h1 className="text-3xl font-bold tracking-tight text-[#131b2e] mb-1.5" style={{ fontFamily: "'Manrope', sans-serif" }}>
+              Analytics
+            </h1>
+            <p className="text-[#727783] text-sm">
+              BCR · Loss Ratio · Sustainability monitoring across all {cities.length} cities, 3 tiers
+            </p>
           </div>
           <div className="flex items-center gap-3">
             {dataLoading ? (
-              <div className="px-3 py-1.5 rounded-lg border border-white/10 text-xs font-mono text-gray-400">Loading…</div>
+              <div className="px-3 py-1.5 rounded-xl border border-[#e8ecf8] bg-white text-xs font-mono text-[#b0b5c3]">Loading…</div>
             ) : (
-              <div className="px-3 py-1.5 rounded-lg border text-xs font-mono font-bold"
+              <div className="px-3 py-1.5 rounded-xl border text-xs font-mono font-bold"
                 style={{ color: platCfg.color, background: platCfg.bg, borderColor: platCfg.border }}>
                 Platform BCR: {(platformBcr * 100).toFixed(1)}% — {platCfg.label}
               </div>
@@ -537,7 +556,7 @@ export default function ActuarialDashboard() {
             <button
               onClick={fetchCities}
               disabled={dataLoading}
-              className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-full text-xs font-mono text-[#10a37f] flex items-center gap-2 hover:bg-white/10 transition-colors disabled:opacity-50"
+              className="px-3 py-1.5 bg-white border border-[#e8ecf8] rounded-full text-xs font-mono text-[#10a37f] flex items-center gap-2 hover:bg-[#f2f3ff] transition-colors disabled:opacity-50 shadow-sm"
             >
               <RefreshCw className={`w-3 h-3 ${dataLoading ? 'animate-spin' : ''}`} />
               {dataLoading ? 'Loading…' : `LIVE · ${lastRefresh.toLocaleTimeString()}`}
@@ -549,22 +568,22 @@ export default function ActuarialDashboard() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
             { icon: <Activity className="w-4 h-4" />, label: 'Platform BCR',        val: `${(platformBcr * 100).toFixed(1)}%`,               sub: 'Target: 55–70%',                             color: platCfg.color },
-            { icon: <DollarSign className="w-4 h-4"/>, label: 'Total Premium Pool', val: `₹${(platform.totalPremium/100000).toFixed(1)}L`,    sub: `8 weeks · ${cities.length * 1000} riders`,  color: '#10a37f' },
+            { icon: <DollarSign className="w-4 h-4"/>, label: 'Total Premium Pool', val: `₹${(platform.totalPremium/100000).toFixed(1)}L`,    sub: `8 weeks · ${totalRiders.toLocaleString('en-IN')} riders`,  color: '#10a37f' },
             { icon: <TrendingUp className="w-4 h-4"/>, label: 'Total Claims Paid',  val: `₹${(platform.totalPayout/100000).toFixed(1)}L`,     sub: `${platform.totalClaims.toLocaleString()} claims settled`, color: '#0ea5e9' },
             { icon: <AlertTriangle className="w-4 h-4"/>, label: 'Cities at Risk',  val: `${suspendedCities.length + watchCities.length}`,     sub: `${suspendedCities.length} suspended · ${watchCities.length} on watch`, color: '#f59e0b' },
           ].map((k, i) => (
             <motion.div key={k.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.07 }}
-              className="glass-panel p-5 flex flex-col gap-3">
-              <div className="flex items-center gap-2" style={{ color: k.color }}>
-                {k.icon}
-                <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">{k.label}</span>
+              className={`${CARD} p-5 flex flex-col gap-3`}>
+              <div className="flex items-center gap-2">
+                <span style={{ color: k.color }}>{k.icon}</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#727783]">{k.label}</span>
               </div>
               <div>
                 <p className="text-2xl font-bold font-mono" style={{ color: k.color }}>
                   {dataLoading ? '—' : k.val}
                 </p>
-                <p className="text-[11px] text-gray-500 mt-1">{k.sub}</p>
+                <p className="text-[11px] text-[#b0b5c3] mt-1">{k.sub}</p>
               </div>
             </motion.div>
           ))}
@@ -572,7 +591,7 @@ export default function ActuarialDashboard() {
 
         {/* ── City Grids ── */}
         {dataLoading ? (
-          <div className="text-center py-20 text-gray-500">Loading actuarial data from backend…</div>
+          <div className="text-center py-20 text-[#b0b5c3]">Loading data…</div>
         ) : (
           [
             { label: 'Tier 1 — Metro Cities', cities: tier1, color: TIER_COLOR['tier_1'] },
@@ -581,11 +600,11 @@ export default function ActuarialDashboard() {
           ].map(group => group.cities.length > 0 && (
             <div key={group.label}>
               <div className="flex items-center gap-3 mb-3">
-                <div className="h-px flex-1 bg-white/5" />
+                <div className="h-px flex-1 bg-[#e8ecf8]" />
                 <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: group.color }}>
                   {group.label}
                 </span>
-                <div className="h-px flex-1 bg-white/5" />
+                <div className="h-px flex-1 bg-[#e8ecf8]" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {group.cities.map(city => (
@@ -613,9 +632,9 @@ export default function ActuarialDashboard() {
 
         {/* ── Stress Test ── */}
         <div className="flex items-center gap-3 mt-4">
-          <ChevronRight className="w-4 h-4 text-amber-400" />
-          <span className="text-xs font-semibold text-amber-400 uppercase tracking-widest">Stress Testing</span>
-          <div className="h-px flex-1 bg-white/5" />
+          <ChevronRight className="w-4 h-4 text-amber-500" />
+          <span className="text-xs font-semibold text-amber-600 uppercase tracking-widest">Stress Testing</span>
+          <div className="h-px flex-1 bg-[#e8ecf8]" />
         </div>
         <StressTestPanel />
 

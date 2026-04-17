@@ -22,6 +22,20 @@ async def check_multi_source_verification(db: AsyncSession, rider_id: int, trigg
     trigger_type = trigger_reading.trigger_type
     trigger_str = trigger_type.value if hasattr(trigger_type, 'value') else str(trigger_type)
 
+    # Simulated triggers: all sources auto-confirmed (disruption is externally injected)
+    is_simulated = isinstance(trigger_reading.raw_data, dict) and trigger_reading.raw_data.get("simulated")
+    if is_simulated:
+        return {"passed": True, "score": 0.0, "details": {
+            "sources_checked": 3,
+            "sources_confirmed": 3,
+            "source_details": [
+                {"source": "primary_api",   "confirmed": True, "data": {"type": "simulated"}},
+                {"source": "secondary_api", "confirmed": True, "data": {"type": "simulated"}},
+                {"source": "peer_behavior", "confirmed": True, "data": {"type": "simulated"}},
+            ],
+            "issues": [],
+        }}
+
     sources_checked = 0
     sources_confirmed = 0
     source_details = []

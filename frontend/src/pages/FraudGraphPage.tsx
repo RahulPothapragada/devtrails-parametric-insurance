@@ -22,12 +22,14 @@ const TIER_LABEL: Record<string, string> = { tier_1: 'Tier 1', tier_2: 'Tier 2',
 const DEFAULT_CITY = { id: 'Mumbai', name: 'Mumbai', lat: 19.12, lng: 72.86, tier: 'Tier 1' };
 
 
-function MapPanner({ lat, lng }: { lat: number; lng: number }) {
+function MapPanner({ lat, lng, zoom }: { lat: number; lng: number; zoom?: number }) {
   const map = useMap();
   useEffect(() => {
-    if (map) map.panTo({ lat, lng });
+    if (!map) return;
+    map.panTo({ lat, lng });
+    if (zoom !== undefined) map.setZoom(zoom);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lat, lng, map]);
+  }, [lat, lng, zoom, map]);
   return null;
 }
 
@@ -41,6 +43,7 @@ export default function FraudGraphPage() {
   const [mapStyle, setMapStyle] = useState<'light' | 'satellite'>('light');
   const [showRadius, setShowRadius] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [pinnedLocation, setPinnedLocation] = useState<{ lat: number; lng: number; zoom: number } | null>(null);
 
   // Load cities from backend
   useEffect(() => {
@@ -84,6 +87,7 @@ export default function FraudGraphPage() {
     }
     fetchLiveNetwork();
     setSelectedNode(null);
+    setPinnedLocation(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCity.id]); // only re-fetch when city changes, not when coords update from payload
 
@@ -116,87 +120,12 @@ export default function FraudGraphPage() {
           <p className="text-xs text-muted-foreground font-medium">Real-time geospatial anomaly detection.</p>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
-          {/* Stats Bar */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-muted/30 p-3 rounded-lg border border-border relative">
-              <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest block mb-1">Active Riders</span>
-              <span className="text-xl font-bold text-foreground font-mono">{loading ? '...' : dashboardStats.activeNodes}</span>
-              {loading && <span className="absolute top-3 right-3 flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span></span>}
-            </div>
-            <div className="bg-muted/30 p-3 rounded-lg border border-border">
-              <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest block mb-1">Threat Level</span>
-              <span className={cn(
-                "text-xs font-bold leading-tight pt-1 block",
-                dashboardStats.threatLevel === 'SECURE' ? "text-primary" : "text-destructive"
-              )}>
-                {dashboardStats.threatLevel}
-              </span>
-            </div>
-          </div>
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
 
-          {/* Anomaly Rate — live computed from real rider nodes */}
-          {!loading && dashboardStats.activeNodes > 0 && (
-            <div className={cn(
-              "p-3 rounded-lg border",
-              dashboardStats.anomalyPct > 15
-                ? "bg-destructive/10 border-destructive/30"
-                : "bg-muted/30 border-border"
-            )}>
-              <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest block mb-2">Anomalous Behaviour</span>
-              <div className="flex items-end gap-2 mb-2">
-                <span className={cn(
-                  "text-2xl font-bold font-mono",
-                  dashboardStats.anomalyPct > 15 ? "text-destructive" : "text-[#f59e0b]"
-                )}>
-                  {dashboardStats.anomalyPct}%
-                </span>
-                <span className="text-xs text-muted-foreground pb-0.5">
-                  of riders in {activeCity.name}
-                </span>
-              </div>
-              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                <div
-                  className={cn("h-full rounded-full transition-all duration-700", dashboardStats.anomalyPct > 15 ? "bg-destructive" : "bg-[#f59e0b]")}
-                  style={{ width: `${dashboardStats.anomalyPct}%` }}
-                />
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-1.5">
-                {dashboardStats.totalSpoofing} riders flagged · {dashboardStats.activeNodes - dashboardStats.totalSpoofing} clean
-              </p>
-            </div>
-          )}
-
-          {/* Active Riders List */}
-          <div className="space-y-3 mt-6">
-            <h2 className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Active Riders Details</h2>
-            <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border">
-              {nodes.filter((n: any) => n.type === 'rider').map((rider: any) => (
-                <div 
-                   key={rider.id}
-                   onClick={() => setSelectedNode(rider)}
-                   className={cn("p-2.5 rounded-lg border text-xs cursor-pointer hover:bg-muted font-medium flex items-center justify-between transition-colors",
-                   selectedNode?.id === rider.id ? "bg-primary/10 border-primary" : "bg-card"
-                   )}
-                >
-                   <span className="truncate flex-1">{rider.name}</span>
-                   <span className={cn(
-                     "w-2.5 h-2.5 rounded-full shrink-0 shadow-sm",
-                     rider.status === 'attack' ? "bg-destructive border border-destructive/50" :
-                     rider.status === 'spoofing' ? "bg-amber-500 border border-amber-500/50" : "bg-primary border border-primary/50"
-                   )} />
-                </div>
-              ))}
-              {nodes.filter((n: any) => n.type === 'rider').length === 0 && !loading && (
-                <div className="text-xs text-muted-foreground italic p-2 text-center">Loading network activity...</div>
-              )}
-            </div>
-          </div>
-
-          {/* Controls */}
-          <div className="space-y-4">
+          {/* 1. City Selector — first */}
+          <div className="space-y-2">
             <h2 className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Operational Zone</h2>
-            <select 
+            <select
               className="w-full bg-card border border-border rounded-xl px-4 h-11 text-sm font-bold text-foreground scrollbar-hide focus:outline-none focus:ring-1 focus:ring-primary/50"
               value={activeCity.id}
               onChange={(e) => { const c = cities.find(c => c.id === e.target.value); if (c) setActiveCity(c); }}
@@ -211,8 +140,80 @@ export default function FraudGraphPage() {
                 {cities.filter(c => c.tier === 'Tier 3').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </optgroup>
             </select>
+          </div>
 
-            <h2 className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-6">Interface Controls</h2>
+          {/* 2. Stats */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-muted/30 p-3 rounded-lg border border-border relative">
+              <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest block mb-1">Total Riders</span>
+              <span className="text-xl font-bold text-foreground font-mono">{loading ? '…' : dashboardStats.activeNodes}</span>
+              {loading && <span className="absolute top-3 right-3 flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-primary" /></span>}
+            </div>
+            <div className="bg-muted/30 p-3 rounded-lg border border-border">
+              <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest block mb-1">Spoofing</span>
+              <span className={cn("text-xl font-bold font-mono", dashboardStats.totalSpoofing > 0 ? "text-destructive" : "text-primary")}>
+                {loading ? '…' : dashboardStats.totalSpoofing}
+              </span>
+            </div>
+          </div>
+
+          {/* 3. Anomaly Rate */}
+          {!loading && dashboardStats.activeNodes > 0 && (
+            <div className={cn("p-3 rounded-lg border", dashboardStats.anomalyPct > 15 ? "bg-destructive/10 border-destructive/30" : "bg-muted/30 border-border")}>
+              <div className="flex items-end justify-between mb-2">
+                <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">% Riders Flagged</span>
+                <span className={cn("text-lg font-bold font-mono", dashboardStats.anomalyPct > 15 ? "text-destructive" : "text-[#f59e0b]")}>
+                  {dashboardStats.anomalyPct}%
+                </span>
+              </div>
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                <div className={cn("h-full rounded-full transition-all duration-700", dashboardStats.anomalyPct > 15 ? "bg-destructive" : "bg-[#f59e0b]")}
+                  style={{ width: `${dashboardStats.anomalyPct}%` }} />
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1.5">
+                {dashboardStats.activeNodes - dashboardStats.totalSpoofing} clean · {dashboardStats.totalSpoofing} flagged
+              </p>
+            </div>
+          )}
+
+          {/* 4. Flagged Riders — click to pinpoint on map */}
+          <div className="space-y-2">
+            <h2 className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Flagged Riders</h2>
+            {loading ? (
+              <p className="text-xs text-muted-foreground italic text-center py-3">Scanning network…</p>
+            ) : nodes.filter((n: any) => n.type === 'rider' && n.status !== 'normal').length === 0 ? (
+              <p className="text-xs text-primary font-medium text-center py-3">✓ No anomalies detected</p>
+            ) : (
+              <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-border">
+                {nodes.filter((n: any) => n.type === 'rider' && n.status !== 'normal').map((rider: any) => (
+                  <div
+                    key={rider.id}
+                    onClick={() => {
+                      setSelectedNode(rider);
+                      setPinnedLocation({ lat: rider.lat, lng: rider.lng, zoom: 16 });
+                    }}
+                    className={cn("p-2.5 rounded-lg border text-xs cursor-pointer transition-colors",
+                      selectedNode?.id === rider.id ? "bg-destructive/10 border-destructive/40" : "bg-card hover:bg-muted border-border"
+                    )}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-foreground truncate">{rider.name}</span>
+                      <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ml-1",
+                        rider.status === 'attack' ? "bg-destructive/10 text-destructive" : "bg-amber-500/10 text-amber-600"
+                      )}>
+                        {rider.status === 'attack' ? 'ATTACK' : 'SPOOF'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground truncate">{rider.location} · {rider.verdict}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 5. Map Controls */}
+          <div className="space-y-3">
+            <h2 className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Interface Controls</h2>
             <div className="flex bg-muted/50 p-1 rounded-xl border border-border shadow-inner">
                <button 
                 onClick={() => setMapStyle('light')}
@@ -278,7 +279,11 @@ export default function FraudGraphPage() {
             className="h-full w-full"
             style={{ cursor: 'crosshair' }}
           >
-            <MapPanner lat={activeCity.lat} lng={activeCity.lng} />
+            <MapPanner
+              lat={pinnedLocation?.lat ?? activeCity.lat}
+              lng={pinnedLocation?.lng ?? activeCity.lng}
+              zoom={pinnedLocation?.zoom}
+            />
 
             {/* Nodes */}
             {nodes.map(node => {
@@ -302,9 +307,19 @@ export default function FraudGraphPage() {
                     }} />
                   ) : (
                     <div style={{ position: 'relative' }}>
+                      {selectedNode?.id === node.id && (
+                        <div style={{
+                          position: 'absolute', inset: -6, borderRadius: '50%',
+                          border: `2px solid ${color}`, animation: 'ping 1s ease-in-out infinite',
+                          opacity: 0.6,
+                        }} />
+                      )}
                       <div style={{
-                        background: color, borderRadius: '50%', width: 14, height: 14,
-                        border: '2px solid white', boxShadow: `0 0 10px ${color}88`
+                        background: color, borderRadius: '50%',
+                        width: selectedNode?.id === node.id ? 20 : 14,
+                        height: selectedNode?.id === node.id ? 20 : 14,
+                        border: '2px solid white', boxShadow: `0 0 ${selectedNode?.id === node.id ? 16 : 10}px ${color}88`,
+                        transition: 'all 0.2s ease',
                       }} />
                       {node.status === 'attack' && (
                         <div style={{
@@ -324,77 +339,48 @@ export default function FraudGraphPage() {
         <AnimatePresence>
           {selectedNode && (
             <motion.div
-              initial={{ opacity: 0, y: 50, scale: 0.95 }}
+              initial={{ opacity: 0, y: 20, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 50, scale: 0.95 }}
-              className="absolute bottom-10 left-10 right-10 md:left-auto md:right-10 md:w-96 z-[1000] rounded-2xl border bg-card/95 backdrop-blur-xl shadow-2xl overflow-hidden shadow-primary/5"
+              exit={{ opacity: 0, y: 20, scale: 0.97 }}
+              className="absolute bottom-4 right-4 w-72 z-[1000] rounded-xl border bg-card/95 backdrop-blur-xl shadow-xl overflow-hidden"
             >
-              <div className={cn(
-                "h-1.5 w-full",
-                selectedNode.status === 'attack' ? "bg-destructive shadow-[0_0_10px_var(--destructive)]" : 
-                selectedNode.status === 'spoofing' ? "bg-amber-500" : "bg-primary"
-              )} />
-              <div className="p-6">
-                <div className="flex justify-between items-start mb-6">
-                   <div className="flex items-center gap-4">
-                     {selectedNode.type === 'tower' ? (
-                        <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-                           <Crosshair className="w-6 h-6 text-blue-500" />
-                        </div>
-                     ) : (
-                        <div className={cn(
-                          "w-12 h-12 rounded-xl flex items-center justify-center border",
-                          selectedNode.risk === 'extreme' ? "bg-destructive/10 border-destructive/20 text-destructive" :
-                          selectedNode.risk === 'high' ? "bg-amber-500/10 border-amber-500/20 text-amber-500" :
-                          "bg-primary/10 border-primary/20 text-primary"
-                        )}>
-                           <Activity className="w-6 h-6" />
-                        </div>
-                     )}
-                     <div>
-                        <h3 className="text-xl font-bold text-foreground leading-none">{selectedNode.name}</h3>
-                        <p className="text-xs text-muted-foreground font-bold mt-2 uppercase tracking-widest">{selectedNode.id}</p>
-                     </div>
-                   </div>
-                   <Button variant="ghost" size="icon" onClick={() => setSelectedNode(null)} className="h-8 w-8 rounded-full">
-                     <Crosshair className="w-4 h-4 rotate-45" />
-                   </Button>
+              <div className={cn("h-1 w-full", selectedNode.status === 'attack' ? "bg-destructive" : selectedNode.status === 'spoofing' ? "bg-amber-500" : "bg-primary")} />
+              <div className="p-3">
+                <div className="flex justify-between items-center mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center border shrink-0",
+                      selectedNode.risk === 'extreme' ? "bg-destructive/10 border-destructive/20 text-destructive" :
+                      selectedNode.risk === 'high' ? "bg-amber-500/10 border-amber-500/20 text-amber-500" :
+                      "bg-blue-500/10 border-blue-500/20 text-blue-500"
+                    )}>
+                      {selectedNode.type === 'tower' ? <Crosshair className="w-3.5 h-3.5" /> : <Activity className="w-3.5 h-3.5" />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-foreground leading-none">{selectedNode.name}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{selectedNode.id}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setSelectedNode(null)} className="p-1 rounded-lg hover:bg-muted transition-colors">
+                    <Crosshair className="w-3.5 h-3.5 text-muted-foreground rotate-45" />
+                  </button>
                 </div>
 
-                <div className="space-y-4">
-                   <div className="flex justify-between items-center p-3.5 rounded-xl border bg-muted/30">
-                      <div className="flex items-center gap-3">
-                         <MapIcon className="w-4 h-4 text-muted-foreground" />
-                         <span className="text-xs font-bold text-muted-foreground">Geospatial Center</span>
-                      </div>
-                      <span className="text-xs font-bold text-foreground font-mono">{selectedNode.lat.toFixed(4)}, {selectedNode.lng.toFixed(4)}</span>
-                   </div>
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center px-2.5 py-1.5 rounded-lg bg-muted/40 text-xs">
+                    <span className="text-muted-foreground flex items-center gap-1.5"><MapIcon className="w-3 h-3" /> Location</span>
+                    <span className="font-mono font-bold text-foreground">{selectedNode.lat.toFixed(4)}, {selectedNode.lng.toFixed(4)}</span>
+                  </div>
 
-                   {selectedNode.type === 'rider' && (
-                     <div className={cn(
-                        "p-4 rounded-xl border flex items-center gap-4",
-                        selectedNode.risk === 'extreme' ? "bg-destructive/10 border-destructive/20" : "bg-muted/50 border-border"
-                     )}>
-                        {selectedNode.risk === 'extreme' ? <AlertCircle className="w-5 h-5 text-destructive animate-bounce" /> : <Info className="w-5 h-5 text-primary" />}
-                        <div>
-                           <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest leading-none mb-1">Safety Verdict</p>
-                           <p className={cn(
-                              "text-xs font-bold",
-                              selectedNode.risk === 'extreme' ? "text-destructive" : 
-                              selectedNode.risk === 'high' ? "text-amber-500" : "text-foreground"
-                           )}>
-                              {selectedNode.verdict || (selectedNode.risk === 'extreme' ? 'CRITICAL: Multi-Proxy Relay Detected' : 
-                               selectedNode.risk === 'high' ? 'High Risk Location Mismatch' : 'Nominal Signal Pattern')}
-                           </p>
-                        </div>
-                     </div>
-                   )}
-                </div>
-
-                <div className="mt-8">
-                   <Button className="w-full rounded-xl h-11 bg-primary hover:bg-primary/90 font-bold">
-                     Analyze Defense Packet <ChevronRight className="w-4 h-4 ml-2" />
-                   </Button>
+                  {selectedNode.type === 'rider' && (
+                    <div className={cn("px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-2",
+                      selectedNode.risk === 'extreme' ? "bg-destructive/10 border border-destructive/20" : "bg-amber-500/10 border border-amber-500/20"
+                    )}>
+                      {selectedNode.risk === 'extreme' ? <AlertCircle className="w-3.5 h-3.5 text-destructive shrink-0" /> : <Info className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+                      <span className={cn("font-semibold leading-tight", selectedNode.risk === 'extreme' ? "text-destructive" : "text-amber-600")}>
+                        {selectedNode.verdict || 'Anomaly Detected'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>

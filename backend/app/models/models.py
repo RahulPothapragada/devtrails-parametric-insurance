@@ -1,7 +1,7 @@
 """SQLAlchemy ORM Models for FlowSecure."""
 
 from sqlalchemy import (
-    Column, Integer, String, Float, Boolean, DateTime, Enum, ForeignKey, JSON, Text
+    Column, Integer, String, Float, Boolean, DateTime, Enum, ForeignKey, JSON, Text, Index
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -280,6 +280,9 @@ class FraudCheck(Base):
 class RiderActivity(Base):
     """Mock platform data — simulates rider activity on the delivery platform."""
     __tablename__ = "rider_activities"
+    __table_args__ = (
+        Index("ix_rider_activities_rider_date", "rider_id", "date"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     rider_id = Column(Integer, ForeignKey("riders.id"), nullable=False)

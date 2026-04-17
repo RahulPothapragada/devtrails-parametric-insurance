@@ -218,16 +218,48 @@ async def end_of_week_batch(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.post("/auto-disburse", summary="Instant auto-disburse all approved claims")
-async def auto_disburse(db: AsyncSession = Depends(get_db)):
+@router.post("/auto-disburse", summary="Instant auto-disburse approved claims for current rider")
+async def auto_disburse(
+    db: AsyncSession = Depends(get_db),
+    current_rider=Depends(get_current_rider),
+):
     """
-    Demo endpoint: processes ALL approved/auto_approved claims instantly.
-    Simulates the full payout lifecycle including failure recovery with
-    UPI → IMPS channel fallback. No authentication required (admin/demo endpoint).
+    Parametric auto-disburse: processes all approved/auto_approved claims for
+    the authenticated rider that haven't been paid yet.
+    Called automatically by the frontend on Payouts page load.
     """
-    report = await auto_payout_all(db)
+    from app.services.payout.payout_service import auto_disburse_claim
+
+    result = await db.execute(
+        select(Claim).where(
+            Claim.rider_id == current_rider.id,
+            Claim.status.in_([ClaimStatus.AUTO_APPROVED, ClaimStatus.APPROVED]),
+            Claim.payout_status.in_([PayoutStatus.NOT_INITIATED, PayoutStatus.ROLLED_BACK]),
+            Claim.payout_amount > 0,
+        )
+    )
+    pending = result.scalars().all()
+
+    succeeded, failed_then_recovered, permanently_failed, total_disbursed = 0, 0, 0, 0.0
+    for claim in pending:
+        txn = await auto_disburse_claim(claim.id, db)
+        if txn.get("success"):
+            if txn.get("attempts", 1) > 1:
+                failed_then_recovered += 1
+            else:
+                succeeded += 1
+            total_disbursed += txn.get("amount", 0)
+        else:
+            permanently_failed += 1
+
     await db.commit()
-    return report
+    return {
+        "processed": len(pending),
+        "succeeded": succeeded,
+        "failed_then_recovered": failed_then_recovered,
+        "permanently_failed": permanently_failed,
+        "total_disbursed": round(total_disbursed, 2),
+    }
 
 
 @router.get("/demo-summary", summary="Aggregate payout stats for demo dashboard")

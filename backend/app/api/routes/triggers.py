@@ -33,6 +33,7 @@ class TriggerSimulateRequest(BaseModel):
     trigger_type: str  # rainfall, aqi, traffic, social, heat, cold_fog
     value: Optional[float] = None
     duration_hours: Optional[float] = 3.0
+    rider_id: Optional[int] = None  # if set, only generate claim for this rider
 
 
 @router.post("/simulate", summary="Simulate a disruption for demo")
@@ -74,8 +75,13 @@ async def simulate_trigger(request: TriggerSimulateRequest, db: AsyncSession = D
     db.add(trigger_reading)
     await db.flush()
 
-    # Auto-generate claims for all affected riders
-    claim_result = await generate_claims_for_trigger(db, trigger_reading)
+    # Auto-generate claims — optionally scoped to a single rider for demo
+    claim_result = await generate_claims_for_trigger(db, trigger_reading, rider_id=request.rider_id)
+
+    # Invalidate dashboard cache for any rider that got a new claim
+    from app.api.routes.riders import invalidate_dashboard_cache
+    for detail in claim_result.get("claim_details", []):
+        invalidate_dashboard_cache(detail["rider_id"])
 
     return {
         "message": f"Simulated {trigger_type} disruption in {zone.name}",
@@ -242,6 +248,9 @@ async def demo_disaster(rider_id: int, db: AsyncSession = Depends(get_db)):
     from app.services.payout.payout_service import auto_disburse_claim
     payout_result = await auto_disburse_claim(claim_id, db)
     await db.commit()
+
+    from app.api.routes.riders import invalidate_dashboard_cache
+    invalidate_dashboard_cache(rider_id)
 
     return {
         "message": f"Rainfall simulated in {zone.name}",

@@ -1,6 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Wallet, CheckCircle2, AlertCircle, Loader2, Zap, ArrowRight, IndianRupee } from 'lucide-react';
+import {
+  Wallet, CheckCircle2, AlertCircle, Loader2, Zap, Clock,
+  IndianRupee, ShieldCheck, RefreshCw,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { API_BASE as API } from '@/lib/api';
 
@@ -22,9 +25,6 @@ interface RiderData {
   recent_claims: Claim[];
 }
 
-type StepStatus = 'pending' | 'running' | 'success' | 'failed';
-interface FlowStep { label: string; status: StepStatus; detail?: string }
-
 function authHeaders(): Record<string, string> {
   const t = localStorage.getItem('flowsecure_token');
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -32,86 +32,87 @@ function authHeaders(): Record<string, string> {
   return headers;
 }
 
-const PAYOUT_CACHE_KEY = 'fs_payout_v1';
-function readPayoutCache(): RiderData | null {
-  try {
-    const raw = sessionStorage.getItem(PAYOUT_CACHE_KEY);
-    if (!raw) return null;
-    const { data, ts } = JSON.parse(raw);
-    if (Date.now() - ts > 60_000) return null; // 1 min TTL — payout state changes fast
-    return data;
-  } catch { return null; }
+function triggerLabel(t: string) {
+  return t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+function statusBadge(claim: Claim) {
+  const ps = claim.payout_status;
+  const cs = claim.status;
+  if (cs === 'paid' || ps === 'confirmed')
+    return { label: 'Paid', color: 'text-green-600 bg-green-50 border-green-200' };
+  if (ps === 'initiated' || ps === 'processing')
+    return { label: 'Processing…', color: 'text-blue-600 bg-blue-50 border-blue-200' };
+  if (ps === 'failed')
+    return { label: 'Failed', color: 'text-red-500 bg-red-50 border-red-200' };
+  if (cs === 'pending_review')
+    return { label: 'Under Review', color: 'text-amber-600 bg-amber-50 border-amber-200' };
+  if (cs === 'denied')
+    return { label: 'Denied', color: 'text-gray-500 bg-gray-50 border-gray-200' };
+  if (cs === 'auto_approved' || cs === 'approved')
+    return { label: 'Queued', color: 'text-blue-600 bg-blue-50 border-blue-200' };
+  return { label: cs, color: 'text-gray-500 bg-gray-50 border-gray-200' };
+}
 
 export default function Payouts() {
-  const [data, setData] = useState<RiderData | null>(() => readPayoutCache());
-  const [loading, setLoading] = useState(!readPayoutCache());
-  const [runningId, setRunningId] = useState<number | null>(null);
-  const [flowSteps, setFlowSteps] = useState<FlowStep[]>([]);
-  const [flowAmount, setFlowAmount] = useState(0);
-  const [showFlow, setShowFlow] = useState(false);
+  const [data, setData] = useState<RiderData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [autoDisburseRunning, setAutoDisburseRunning] = useState(false);
+  const [lastDisburseResult, setLastDisburseResult] = useState<{
+    succeeded: number; total_disbursed: number;
+  } | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasDisbursed = useRef(false);
 
   const fetchData = useCallback(async () => {
     const token = localStorage.getItem('flowsecure_token');
     if (!token) { setLoading(false); return; }
     try {
-      const res = await fetch(`${API}/riders/me`, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) {
-        const json = await res.json();
-        setData(json);
-        try { sessionStorage.setItem(PAYOUT_CACHE_KEY, JSON.stringify({ data: json, ts: Date.now() })); } catch {}
-      }
+      const res = await fetch(`${API}/riders/me`, { headers: authHeaders() });
+      if (res.ok) setData(await res.json());
     } catch { /* silent */ } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  // Auto-disburse any not_initiated AUTO_APPROVED claims on first load
+  const runAutoDisburse = useCallback(async () => {
+    if (hasDisbursed.current) return;
+    hasDisbursed.current = true;
+    setAutoDisburseRunning(true);
+    try {
+      const res = await fetch(`${API}/payouts/auto-disburse`, {
+        method: 'POST', headers: authHeaders(),
+      });
+      if (res.ok) {
+        const report = await res.json();
+        if (report.processed > 0) {
+          setLastDisburseResult({
+            succeeded: report.succeeded + report.failed_then_recovered,
+            total_disbursed: report.total_disbursed,
+          });
+          await fetchData(); // refresh claims after disbursal
+        }
+      }
+    } catch { /* silent */ } finally { setAutoDisburseRunning(false); }
+  }, [fetchData]);
 
-  const runPayoutFlow = async (claim: Claim, upiId: string) => {
-    setRunningId(claim.id);
-    setFlowAmount(claim.payout_amount);
-    setFlowSteps([
-      { label: `Claim #${claim.id} — ₹${claim.payout_amount.toFixed(0)} auto-approved`, status: 'success' },
-      { label: `Initiating UPI transfer → ${upiId}`, status: 'running' },
-      { label: 'Bank processing…', status: 'pending' },
-      { label: 'Payout result', status: 'pending' },
-    ]);
-    setShowFlow(true);
-    await sleep(900);
+  // Poll every 5s while any claim is in-flight (initiated/processing)
+  const hasInFlight = (d: RiderData | null) =>
+    d?.recent_claims.some(c =>
+      c.payout_status === 'initiated' || c.payout_status === 'processing'
+    ) ?? false;
 
-    // Single call — backend handles UPI attempt + IMPS fallback atomically
-    const res = await fetch(`${API}/payouts/${claim.id}/auto-disburse-single`, {
-      method: 'POST', headers: authHeaders(),
-    });
-    const ap = await res.json();
+  useEffect(() => {
+    fetchData().then(() => runAutoDisburse());
+  }, [fetchData, runAutoDisburse]);
 
-    if (ap.attempts === 1 && ap.success) {
-      setFlowSteps([
-        { label: `Claim #${claim.id} — ₹${claim.payout_amount.toFixed(0)} auto-approved`, status: 'success' },
-        { label: `UPI transfer → ${upiId}`, status: 'success', detail: `Ref: ${ap.ref}` },
-        { label: 'Bank confirmed ✓', status: 'success' },
-        { label: `₹${claim.payout_amount.toFixed(0)} credited via UPI`, status: 'success', detail: 'Parametric payout — no rider action needed.' },
-      ]);
-    } else if (ap.attempts === 2 && ap.success) {
-      setFlowSteps([
-        { label: `Claim #${claim.id} — ₹${claim.payout_amount.toFixed(0)} auto-approved`, status: 'success' },
-        { label: `UPI failed — ${ap.upi_failure_reason}`, status: 'failed', detail: 'Auto-switched to IMPS' },
-        { label: `IMPS transfer → ${ap.bank}`, status: 'success', detail: `Ref: ${ap.ref}` },
-        { label: `₹${claim.payout_amount.toFixed(0)} credited via IMPS ✓`, status: 'success', detail: 'Auto-recovered. No rider action needed.' },
-      ]);
+  useEffect(() => {
+    if (hasInFlight(data)) {
+      pollRef.current = setInterval(fetchData, 5000);
     } else {
-      setFlowSteps([
-        { label: `Claim #${claim.id} — ₹${claim.payout_amount.toFixed(0)} auto-approved`, status: 'success' },
-        { label: `UPI failed — ${ap.upi_failure_reason}`, status: 'failed' },
-        { label: `IMPS failed — ${ap.imps_failure_reason}`, status: 'failed' },
-        { label: 'Support notified for manual transfer', status: 'failed' },
-      ]);
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     }
-
-    setRunningId(null);
-    fetchData();
-  };
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [data, fetchData]);
 
   if (loading) {
     return (
@@ -132,13 +133,15 @@ export default function Payouts() {
     );
   }
 
-  const pendingClaims = data.recent_claims.filter(c =>
-    (c.status === 'auto_approved' || c.status === 'approved') &&
-    (c.payout_status === 'not_initiated' || c.payout_status === 'rolled_back' || !c.payout_status) &&
-    c.payout_amount > 0
+  const paidClaims = data.recent_claims.filter(
+    c => c.status === 'paid' || c.payout_status === 'confirmed'
   );
-  const paidClaims = data.recent_claims.filter(c => c.status === 'paid' || c.payout_status === 'confirmed');
-  const total = paidClaims.reduce((s, c) => s + c.payout_amount, 0);
+  const inFlightClaims = data.recent_claims.filter(
+    c => c.payout_status === 'initiated' || c.payout_status === 'processing'
+  );
+  const reviewClaims = data.recent_claims.filter(c => c.status === 'pending_review');
+  const failedClaims = data.recent_claims.filter(c => c.payout_status === 'failed');
+  const totalPaid = paidClaims.reduce((s, c) => s + c.payout_amount, 0);
 
   return (
     <div
@@ -148,27 +151,72 @@ export default function Payouts() {
       <div className="max-w-2xl mx-auto">
 
         {/* Header */}
-        <div className="mb-8 mt-6">
-          <h1 className="text-4xl font-bold tracking-tight text-[#1D1D1F]">Payouts</h1>
-          <p className="text-[#86868B] mt-1">Parametric claim disbursements for {data.rider.name}</p>
+        <div className="mb-8 mt-6 flex items-start justify-between">
+          <div>
+            <h1 className="text-4xl font-bold tracking-tight text-[#1D1D1F]">Payouts</h1>
+            <p className="text-[#86868B] mt-1">Parametric auto-disbursements for {data.rider.name}</p>
+          </div>
+          <button
+            onClick={() => { hasDisbursed.current = false; fetchData().then(() => runAutoDisburse()); }}
+            className="mt-2 p-2 rounded-xl border border-[#E5E5EA] bg-white hover:bg-[#F5F5F7] transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw className={cn('w-4 h-4 text-[#86868B]', autoDisburseRunning && 'animate-spin')} />
+          </button>
         </div>
 
-        {/* UPI ID card */}
+        {/* Parametric badge */}
+        <div className="bg-[#0071E3]/5 border border-[#0071E3]/20 rounded-2xl px-4 py-3 mb-6 flex items-center gap-3">
+          <ShieldCheck className="w-5 h-5 text-[#0071E3] shrink-0" />
+          <p className="text-sm text-[#0071E3] font-medium">
+            Fully parametric — payouts disburse automatically when a trigger is accepted. No rider action required.
+          </p>
+        </div>
+
+        {/* Auto-disburse in progress */}
+        <AnimatePresence>
+          {autoDisburseRunning && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 mb-4 flex items-center gap-3"
+            >
+              <Loader2 className="w-4 h-4 text-blue-500 animate-spin shrink-0" />
+              <p className="text-sm text-blue-700 font-medium">Auto-disbursing approved claims…</p>
+            </motion.div>
+          )}
+          {!autoDisburseRunning && lastDisburseResult && lastDisburseResult.succeeded > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 mb-4 flex items-center gap-3"
+            >
+              <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+              <p className="text-sm text-green-700 font-medium">
+                Auto-disbursed ₹{lastDisburseResult.total_disbursed.toFixed(0)} across {lastDisburseResult.succeeded} claim{lastDisburseResult.succeeded !== 1 ? 's' : ''}
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* UPI card */}
         <div className="bg-[#1D1D1F] text-white rounded-3xl p-6 mb-6 flex items-center justify-between">
           <div>
             <p className="text-[#94A3B8] text-xs uppercase tracking-widest mb-1">Linked UPI</p>
             <p className="font-mono text-lg font-bold">{data.rider.upi_id || 'Not linked'}</p>
-            <p className="text-[#94A3B8] text-xs mt-1">Primary channel · IMPS fallback enabled</p>
+            <p className="text-[#94A3B8] text-xs mt-1">Primary · IMPS fallback enabled</p>
           </div>
           <Wallet className="w-10 h-10 text-[#94A3B8]" />
         </div>
 
-        {/* Stats row */}
+        {/* Stats */}
         <div className="grid grid-cols-3 gap-3 mb-6">
           {[
-            { label: 'Total Paid', value: `₹${total.toFixed(0)}`, color: '#10a37f' },
+            { label: 'Total Paid', value: `₹${totalPaid.toFixed(0)}`, color: '#10a37f' },
             { label: 'Claims Paid', value: String(paidClaims.length), color: '#0071E3' },
-            { label: 'Pending', value: String(pendingClaims.length), color: '#f59e0b' },
+            { label: 'Under Review', value: String(reviewClaims.length), color: '#f59e0b' },
           ].map(({ label, value, color }) => (
             <div key={label} className="bg-white rounded-2xl p-4 border border-[#E5E5EA]">
               <p className="text-xs text-[#86868B] mb-1">{label}</p>
@@ -177,52 +225,67 @@ export default function Payouts() {
           ))}
         </div>
 
-        {/* Pending Payouts */}
+        {/* In-flight */}
+        {inFlightClaims.length > 0 && (
+          <section className="mb-6">
+            <h2 className="text-lg font-bold text-[#1D1D1F] mb-3 flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+              Processing
+            </h2>
+            <div className="flex flex-col gap-2">
+              {inFlightClaims.map(claim => (
+                <div
+                  key={claim.id}
+                  className="bg-blue-50 border border-blue-200 rounded-2xl px-5 py-4 flex items-center justify-between"
+                >
+                  <div>
+                    <p className="font-semibold text-[#1D1D1F] text-sm">{triggerLabel(claim.trigger_type)} Claim</p>
+                    <p className="text-xs text-blue-600 mt-0.5 flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Transferring to {data.rider.upi_id}
+                    </p>
+                  </div>
+                  <p className="font-bold text-[#1D1D1F]">₹{claim.payout_amount.toFixed(0)}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Completed Transfers */}
         <section className="mb-6">
           <h2 className="text-lg font-bold text-[#1D1D1F] mb-3 flex items-center gap-2">
-            Ready for Disbursal
-            {pendingClaims.length > 0 && (
-              <span className="bg-[#0071E3]/10 text-[#0071E3] text-xs px-2 py-0.5 rounded-full font-semibold">
-                {pendingClaims.length}
-              </span>
-            )}
+            <CheckCircle2 className="w-4 h-4 text-green-500" />
+            Completed Transfers
           </h2>
-          {pendingClaims.length === 0 ? (
+          {paidClaims.length === 0 ? (
             <div className="bg-white rounded-2xl p-8 text-center border border-dashed border-[#E5E5EA] text-[#86868B] text-sm">
-              No pending payouts. Simulate a rainfall claim from the Rider Dashboard.
+              No completed transfers yet. Simulate a trigger from the Rider Dashboard to see auto-payouts.
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2">
               <AnimatePresence>
-                {pendingClaims.map(claim => (
+                {paidClaims.map(claim => (
                   <motion.div
                     key={claim.id}
                     layout
-                    initial={{ opacity: 0, y: 8 }}
+                    initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    className="bg-white rounded-2xl p-5 border border-[#0071E3]/20 flex items-center justify-between gap-4"
+                    className="bg-white rounded-2xl px-5 py-4 border border-[#E5E5EA] flex justify-between items-center"
                   >
                     <div>
-                      <p className="font-bold text-[#1D1D1F] capitalize">
-                        {claim.trigger_type.replace('_', ' ')} Claim
-                      </p>
-                      <p className="text-sm text-[#86868B] mt-0.5">
-                        Auto-approved · {new Date(claim.event_time).toLocaleDateString('en-IN')}
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="font-semibold text-[#1D1D1F] text-sm">{triggerLabel(claim.trigger_type)}</p>
+                        <span className="text-xs px-1.5 py-0.5 rounded-md border font-medium text-green-600 bg-green-50 border-green-200">
+                          Auto-paid
+                        </span>
+                      </div>
+                      <p className="text-xs text-[#86868B] font-mono">
+                        {claim.payout_ref || 'PAID'} · {(claim.payout_channel || 'UPI').toUpperCase()}
                       </p>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-lg font-bold text-[#1D1D1F]">₹{claim.payout_amount.toFixed(0)}</span>
-                      <button
-                        onClick={() => runPayoutFlow(claim, data.rider.upi_id)}
-                        disabled={runningId !== null}
-                        className="flex items-center gap-2 bg-[#0071E3] text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-[#0077ED] transition-colors disabled:opacity-50"
-                      >
-                        {runningId === claim.id
-                          ? <Loader2 className="w-4 h-4 animate-spin" />
-                          : <><Zap className="w-4 h-4" /> Pay via UPI</>
-                        }
-                      </button>
+                    <div className="text-right">
+                      <p className="font-bold text-green-600">+₹{claim.payout_amount.toFixed(0)}</p>
+                      <p className="text-xs text-[#86868B]">{new Date(claim.event_time).toLocaleDateString('en-IN')}</p>
                     </div>
                   </motion.div>
                 ))}
@@ -231,97 +294,48 @@ export default function Payouts() {
           )}
         </section>
 
-        {/* Completed Transfers */}
-        <section>
-          <h2 className="text-lg font-bold text-[#1D1D1F] mb-3">Completed Transfers</h2>
-          {paidClaims.length === 0 ? (
-            <div className="bg-white rounded-2xl p-6 text-center border border-[#E5E5EA] text-[#86868B] text-sm">
-              No completed transfers yet.
-            </div>
-          ) : (
+        {/* Under Review */}
+        {reviewClaims.length > 0 && (
+          <section className="mb-6">
+            <h2 className="text-lg font-bold text-[#1D1D1F] mb-3 flex items-center gap-2">
+              <Clock className="w-4 h-4 text-amber-500" />
+              Under Fraud Review
+            </h2>
             <div className="flex flex-col gap-2">
-              {paidClaims.map(claim => (
-                <div key={claim.id} className="bg-white rounded-2xl px-5 py-4 border border-[#E5E5EA] flex justify-between items-center">
+              {reviewClaims.map(claim => (
+                <div key={claim.id} className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 flex justify-between items-center">
                   <div>
-                    <p className="font-semibold text-[#1D1D1F] capitalize text-sm">
-                      {claim.trigger_type.replace('_', ' ')} · {(claim.payout_channel || 'UPI').toUpperCase()}
-                    </p>
-                    <p className="text-xs text-[#86868B] font-mono mt-0.5">{claim.payout_ref || 'PAID'}</p>
+                    <p className="font-semibold text-[#1D1D1F] text-sm">{triggerLabel(claim.trigger_type)} Claim</p>
+                    <p className="text-xs text-amber-700 mt-0.5">Fraud score above auto-approve threshold — pending review</p>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-green-600">+₹{claim.payout_amount.toFixed(0)}</p>
-                    <p className="text-xs text-[#86868B]">{new Date(claim.event_time).toLocaleDateString('en-IN')}</p>
-                  </div>
+                  <p className="font-bold text-[#1D1D1F]">₹{claim.payout_amount.toFixed(0)}</p>
                 </div>
               ))}
             </div>
-          )}
-        </section>
-      </div>
-
-      {/* Payout Flow Modal */}
-      <AnimatePresence>
-        {showFlow && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
-          >
-            <motion.div
-              initial={{ scale: 0.92, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.92, y: 20 }}
-              className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl"
-              style={{ fontFamily: appleFontFamily }}
-            >
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-xl bg-[#0071E3]/10 flex items-center justify-center">
-                  <IndianRupee className="w-5 h-5 text-[#0071E3]" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg">Auto-Disbursement</h3>
-                  <p className="text-sm text-[#86868B]">₹{flowAmount.toFixed(0)} · {data.rider.upi_id}</p>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-4">
-                {flowSteps.map((step, i) => (
-                  <div key={i} className="flex items-start gap-3">
-                    <div className="shrink-0 mt-0.5">
-                      {step.status === 'success' && <CheckCircle2 className="w-5 h-5 text-green-500" />}
-                      {step.status === 'failed'  && <AlertCircle className="w-5 h-5 text-red-500" />}
-                      {step.status === 'running' && <Loader2 className="w-5 h-5 text-[#0071E3] animate-spin" />}
-                      {step.status === 'pending' && <div className="w-5 h-5 rounded-full border-2 border-[#E5E5EA]" />}
-                    </div>
-                    <div>
-                      <p className={cn(
-                        'text-sm font-medium leading-snug',
-                        step.status === 'success' ? 'text-[#1D1D1F]' :
-                        step.status === 'failed'  ? 'text-red-500' :
-                        step.status === 'running' ? 'text-[#0071E3]' : 'text-[#86868B]'
-                      )}>{step.label}</p>
-                      {step.detail && (
-                        <p className="text-xs text-[#86868B] font-mono mt-0.5">{step.detail}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Connector lines between steps */}
-              {flowSteps.every(s => s.status !== 'running' && s.status !== 'pending') && (
-                <button
-                  onClick={() => setShowFlow(false)}
-                  className="mt-6 w-full py-3 bg-[#1D1D1F] text-white rounded-xl font-semibold text-sm hover:bg-black transition-colors"
-                >
-                  Done
-                </button>
-              )}
-            </motion.div>
-          </motion.div>
+          </section>
         )}
-      </AnimatePresence>
+
+        {/* Failed */}
+        {failedClaims.length > 0 && (
+          <section>
+            <h2 className="text-lg font-bold text-[#1D1D1F] mb-3 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-500" />
+              Failed Transfers
+            </h2>
+            <div className="flex flex-col gap-2">
+              {failedClaims.map(claim => (
+                <div key={claim.id} className="bg-red-50 border border-red-200 rounded-2xl px-5 py-4 flex justify-between items-center">
+                  <div>
+                    <p className="font-semibold text-[#1D1D1F] text-sm">{triggerLabel(claim.trigger_type)}</p>
+                    <p className="text-xs text-red-600 mt-0.5">UPI + IMPS both failed — support notified</p>
+                  </div>
+                  <p className="font-bold text-red-500">₹{claim.payout_amount.toFixed(0)}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
     </div>
   );
 }

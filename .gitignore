@@ -36,3 +36,10 @@ Thumbs.db
 *.mp4
 *.mov
 *.zip
+
+# Secrets & scratch files
+client_secret_*.json
+twilio_2FA_recovery_code.txt
+diff.txt
+scratch.py
+scratch_out.txt

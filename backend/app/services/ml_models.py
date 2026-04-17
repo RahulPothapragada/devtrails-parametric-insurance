@@ -80,27 +80,33 @@ class MLRegistry:
     async def async_initialize(self) -> None:
         """
         Full init — trains all models from the actual seeded database.
-        Call from FastAPI lifespan AFTER the DB is seeded.
+        CPU-bound sklearn training is offloaded to a thread pool so it never
+        blocks the asyncio event loop (which would freeze incoming HTTP requests).
         """
-        self._load_static_sources()
-        self._train_pricing()
+        import asyncio
+        loop = asyncio.get_event_loop()
 
-        # Load real rider/activity/zone rows
+        self._load_static_sources()
+        # Pricing training is fast — run in thread to keep loop free
+        await loop.run_in_executor(None, self._train_pricing)
+
+        # Load real rider/activity/zone rows (async DB queries — fine as-is)
         riders, activities, zones = await self._load_db_data()
 
+        # All sklearn .fit() calls are CPU-bound — run in executor so event loop stays responsive
         if len(riders) >= 200:
-            self._train_fraud_from_riders(riders, zones)
+            await loop.run_in_executor(None, self._train_fraud_from_riders, riders, zones)
         else:
             logger.warning("Too few riders in DB — falling back to rule-derived fraud data")
-            self._train_fraud_synthetic()
+            await loop.run_in_executor(None, self._train_fraud_synthetic)
 
         if len(activities) >= 500:
-            self._train_earnings_impact_from_activities(activities, zones, riders)
-            self._train_optimizer_from_activities(activities, riders, zones)
+            await loop.run_in_executor(None, self._train_earnings_impact_from_activities, activities, zones, riders)
+            await loop.run_in_executor(None, self._train_optimizer_from_activities, activities, riders, zones)
         else:
             logger.warning("Too few activity rows in DB — falling back to rule-derived data")
-            self._train_earnings_impact_synthetic()
-            self._train_optimizer_synthetic()
+            await loop.run_in_executor(None, self._train_earnings_impact_synthetic)
+            await loop.run_in_executor(None, self._train_optimizer_synthetic)
 
         self.initialized = True
         logger.info(
@@ -118,7 +124,7 @@ class MLRegistry:
         from app.models.models import Rider, RiderActivity, Zone
 
         async with async_session() as db:
-            # Riders — all columns we need for fraud + optimizer features
+            # Riders — sample up to 3000 for fast startup (statistically sufficient)
             r_result = await db.execute(
                 select(
                     Rider.id,
@@ -129,11 +135,11 @@ class MLRegistry:
                     Rider.active_days_last_30,
                     Rider.activity_tier,
                     Rider.is_suspicious,
-                )
+                ).limit(3000)
             )
             riders = r_result.fetchall()
 
-            # Activity records — earnings, hours, deliveries per rider per day
+            # Activity records — sample recent rows only (keep startup fast)
             a_result = await db.execute(
                 select(
                     RiderActivity.rider_id,
@@ -141,7 +147,7 @@ class MLRegistry:
                     RiderActivity.hours_active,
                     RiderActivity.deliveries_completed,
                     RiderActivity.is_working,
-                )
+                ).limit(3000)
             )
             activities = a_result.fetchall()
 
@@ -472,6 +478,9 @@ class MLRegistry:
         self.initialize()
         if self.fraud_model is None:
             return 0.0
+        # Truncate/pad to match the 6 features the IsolationForest was trained on
+        expected = self.fraud_model.n_features_in_
+        features = (features + [0.0] * expected)[:expected]
         decision = float(self.fraud_model.decision_function([features])[0])
         span = max(self._fraud_decision_ceiling - self._fraud_decision_floor, 1e-6)
         scaled = (self._fraud_decision_ceiling - decision) / span

@@ -127,6 +127,7 @@ class RiderOut(BaseModel):
     active_days_last_30: int = 0
     activity_tier: str = "low"
     is_active: bool
+    upi_id: Optional[str] = None
     created_at: datetime
     model_config = {"from_attributes": True}
 

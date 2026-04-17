@@ -18,8 +18,8 @@ from app.services.pricing.pricing_engine import coverage_triggers_from_premium, 
 from app.services.payout.payout_service import auto_disburse_claim
 
 COVERAGE_PCT = 0.50
-MIN_LOSS_FOR_PAYOUT = 75.0
-AUTO_APPROVE_MAX = 20
+MIN_LOSS_FOR_PAYOUT = 0.0   # weekly cap already bounds the max; don't drop low-tier riders
+AUTO_APPROVE_MAX = 40       # matches fraud engine: scores 0-40 = trusted/normal → auto-approve
 PENDING_REVIEW_MAX = 60
 
 # Hourly rates by zone tier (base for Tier 1 Urban)
@@ -49,17 +49,23 @@ fraud_engine = FraudEngine()
 async def generate_claims_for_trigger(
     db: AsyncSession,
     trigger_reading: TriggerReading,
+    rider_id: int | None = None,
 ) -> dict:
-    """Generate claims for all active policies in the triggered zone."""
+    """Generate claims for all active policies in the triggered zone.
+    If rider_id is set, only generate for that specific rider (demo mode).
+    """
     zone_id = trigger_reading.zone_id
 
-    # Ensure rider activities exist for today
-    await _populate_activities(db, trigger_reading.timestamp, zone_id)
+    # Skip activity population for simulated triggers — Wall 7 peer-behavior auto-passes them
+    is_simulated_trigger = isinstance(trigger_reading.raw_data, dict) and trigger_reading.raw_data.get("simulated")
+    if not is_simulated_trigger:
+        await _populate_activities(db, trigger_reading.timestamp, zone_id)
 
-    # Find active policies in zone
-    policies_result = await db.execute(
-        select(Policy).where(Policy.zone_id == zone_id, Policy.status == PolicyStatus.ACTIVE)
-    )
+    # Find active policies in zone — optionally scoped to one rider
+    policy_query = select(Policy).where(Policy.zone_id == zone_id, Policy.status == PolicyStatus.ACTIVE)
+    if rider_id is not None:
+        policy_query = policy_query.where(Policy.rider_id == rider_id)
+    policies_result = await db.execute(policy_query)
     active_policies = policies_result.scalars().all()
 
     results = {
@@ -93,36 +99,33 @@ async def generate_claims_for_trigger(
             city = city_result.scalar_one_or_none()
             city_tier_str = city.city_tier.value if city and city.city_tier else "tier_1"
 
-        # UNDERWRITING RULE: Trigger MUST match worker's active hours
-        # We define rough shift hours, with less restrictive optimization to allow fair payouts
-        hour = trigger_reading.timestamp.hour
-        shift_match = False
-        if rider.shift_type == "flexible":
-            shift_match = True
-        elif rider.shift_type == "morning" and 5 <= hour <= 17:
-            shift_match = True
-        elif rider.shift_type == "evening" and 14 <= hour <= 24:
-            shift_match = True
-        elif rider.shift_type == "night" and (hour >= 20 or hour <= 8):
-            shift_match = True
-
-        if not shift_match:
-            # Drop policy from payout generation for this trigger
-            continue
-
-        existing_paid_like_result = await db.execute(
-            select(Claim).where(
-                Claim.policy_id == policy.id,
-                Claim.rider_id == rider.id,
-                Claim.event_time >= policy.week_start,
-                Claim.event_time < policy.week_end,
-                Claim.payout_amount > 0,
-                Claim.status != ClaimStatus.DENIED,
+        # UNDERWRITING RULE: Trigger must match worker's active hours
+        # Simulated triggers bypass this — demo can fire at any time
+        if not is_simulated_trigger:
+            hour = trigger_reading.timestamp.hour
+            shift_match = (
+                rider.shift_type == "flexible"
+                or (rider.shift_type == "morning" and 5 <= hour <= 17)
+                or (rider.shift_type == "evening" and 14 <= hour <= 24)
+                or (rider.shift_type == "night" and (hour >= 20 or hour <= 8))
             )
-        )
-        if existing_paid_like_result.scalars().first():
-            # One payout per rider per policy week, even if multiple triggers hit.
-            continue
+            if not shift_match:
+                continue
+
+        if not is_simulated_trigger:  # one payout per policy week — bypassed for demo
+            existing_paid_like_result = await db.execute(
+                select(Claim).where(
+                    Claim.policy_id == policy.id,
+                    Claim.rider_id == rider.id,
+                    Claim.event_time >= policy.week_start,
+                    Claim.event_time < policy.week_end,
+                    Claim.payout_amount > 0,
+                    Claim.status != ClaimStatus.DENIED,
+                )
+            )
+            if existing_paid_like_result.scalars().first():
+                # One payout per rider per policy week, even if multiple triggers hit.
+                continue
 
         base_rate = ZONE_HOURLY_RATES.get(tier_str, 140)
         tier_mult = CITY_TIER_RATE_MULT.get(city_tier_str, 1.0)
@@ -181,12 +184,11 @@ async def generate_claims_for_trigger(
             results["pending_review"] += 1
         else:
             status = ClaimStatus.DENIED
-            payout_amount = 0.0
             results["denied"] += 1
 
         claim.status = status
         claim.fraud_score = fraud_score
-        claim.payout_amount = payout_amount
+        # Keep original payout_amount for audit trail; payout_service checks status before disbursing
         claim.fraud_walls_passed = [
             {"wall": w.wall_name, "passed": w.passed, "score": w.score, "reason": w.reason}
             for w in verdict.walls

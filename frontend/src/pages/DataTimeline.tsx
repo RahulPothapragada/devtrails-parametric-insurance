@@ -335,15 +335,14 @@ export default function DataTimeline() {
   // ── Build chart points ────────────────────────────────────────────────────
   const chartPoints: ChartPoint[] = [];
   if (tl) {
-    // Only show every 4th simulated week for readability (still shows full year span)
-    tl.simulated_history.forEach((p, i) => {
-      chartPoints.push({ label: i % 4 === 0 ? p.week_label : '', zone: 'simulated', bcr: p.bcr, raw: p });
+    // Real DB: 26 weeks (~6 months) — label every other week
+    tl.real_history.forEach((p, i) => {
+      chartPoints.push({ label: i % 2 === 0 ? p.week_label : '', zone: 'real', bcr: p.bcr, raw: p });
     });
-    tl.real_history.forEach(p => {
-      chartPoints.push({ label: p.week_label, zone: 'real', bcr: p.bcr, raw: p });
-    });
+    // Current live week
     const cw = tl.current_week;
     chartPoints.push({ label: cw.week_label, zone: 'live', bcr: cw.bcr, raw: cw });
+    // 26-week projection — label every other week (matches history density)
     tl.projection.forEach((p, i) => {
       chartPoints.push({
         label: i % 2 === 0 ? p.week_label : '',
@@ -356,6 +355,56 @@ export default function DataTimeline() {
       });
     });
   }
+
+  // ── Season bands: group consecutive same-season labeled points ────────────
+  const getSeason = (month: number) => {
+    if ([4,5,6].includes(month)) return 'heat';
+    if ([7,8,9].includes(month)) return 'monsoon';
+    if ([10,11,12].includes(month)) return 'aqi';
+    return 'winter';
+  };
+  const SEASON_COLORS: Record<string,string> = {
+    heat:    'rgba(251,191,36,0.10)',
+    monsoon: 'rgba(59,130,246,0.12)',
+    aqi:     'rgba(139,92,246,0.10)',
+    winter:  'rgba(148,163,184,0.06)',
+  };
+  interface SeasonBand { x1: string; x2: string; color: string; label: string; }
+  const seasonBands: SeasonBand[] = [];
+  if (tl) {
+    const labeled = chartPoints.filter(p => p.label && p.raw?.week_start_date);
+    let curSeason = '';
+    let bandX1 = '';
+    let bandX2 = '';
+    labeled.forEach((p, i) => {
+      const m = new Date(p.raw!.week_start_date as string).getMonth() + 1;
+      const s = getSeason(m);
+      if (s !== curSeason) {
+        if (curSeason && bandX1 && bandX2) {
+          seasonBands.push({ x1: bandX1, x2: bandX2, color: SEASON_COLORS[curSeason], label: curSeason });
+        }
+        curSeason = s;
+        bandX1 = p.label;
+      }
+      bandX2 = p.label;
+      if (i === labeled.length - 1 && curSeason && bandX1) {
+        seasonBands.push({ x1: bandX1, x2: bandX2, color: SEASON_COLORS[curSeason], label: curSeason });
+      }
+    });
+  }
+
+  // ── Dynamic Y-axis domain ─────────────────────────────────────────────────
+  const allBcrValues = chartPoints.flatMap(p => {
+    const vals: number[] = [];
+    if (p.bcr !== undefined) vals.push(p.bcr);
+    if (p.bcr_mean !== undefined) vals.push(p.bcr_mean);
+    if (p.band_base !== undefined && p.band_width !== undefined) vals.push(p.band_base + p.band_width);
+    if (p.bcr_p10 !== undefined) vals.push(p.bcr_p10);
+    return vals;
+  });
+  const dataMax = allBcrValues.length > 0 ? Math.max(...allBcrValues) : 0.5;
+  const yMax = Math.min(Math.max(dataMax * 1.25, SUSPEND + 0.05), 1.5);
+  const yMin = 0;
 
   // KPIs
   const curBCR   = tl?.current_week.bcr   ?? 0;
@@ -379,7 +428,7 @@ export default function DataTimeline() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground mb-1">Data Timeline</h1>
             <p className="text-sm text-muted-foreground">
-              1-year estimated history · {tl?.meta.real_weeks ?? 8} weeks real DB data · live simulation · 12-week Monte Carlo projection
+              {tl?.meta.simulated_weeks ?? 8}wk estimated history · {tl?.meta.real_weeks ?? 8}wk real DB data · live simulation · {tl?.meta.projection_weeks ?? 26}wk Monte Carlo projection
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
@@ -503,94 +552,101 @@ export default function DataTimeline() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-4 text-[10px] text-muted-foreground uppercase tracking-wider">
-                  <span className="flex items-center gap-1.5"><span className="w-4 h-0.5 border-t border-dashed border-slate-500 inline-block" />Est. History</span>
-                  <span className="flex items-center gap-1.5"><span className="w-4 h-0.5 bg-[#10a37f] inline-block" />Real DB</span>
+                  <span className="flex items-center gap-1.5"><span className="w-4 h-0.5 bg-[#10a37f] inline-block" />Actual DB (1 yr)</span>
                   <span className="flex items-center gap-1.5"><span className="w-4 h-0.5 border-t-2 border-dashed border-yellow-400 inline-block" />Live NOW</span>
                   <span className="flex items-center gap-1.5"><span className="w-4 h-0.5 border-t-2 border-dashed border-purple-400 inline-block" />Projection P50</span>
                   <span className="flex items-center gap-1.5"><span className="w-4 h-2 bg-purple-500/20 inline-block rounded" />P10–P90 band</span>
                 </div>
               </div>
 
-              {/* Zone guide */}
-              <div className="flex flex-wrap gap-3 mb-4 text-[10px] text-muted-foreground">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#10a37f] inline-block" />Target 55–70%</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#f59e0b] inline-block" />Watch 70–85%</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#ef4444] inline-block" />Suspend &gt;85%</span>
-                <span className="flex items-center gap-1 text-slate-500"><Info className="w-3 h-3" />Grey dashes = algorithm-generated estimate, not real data</span>
+              {/* Season legend */}
+              <div className="flex flex-wrap gap-3 mb-3 text-[10px] text-muted-foreground">
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm inline-block" style={{background:'rgba(251,191,36,0.25)',border:'1px solid rgba(251,191,36,0.5)'}}/>Heat Apr–Jun</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm inline-block" style={{background:'rgba(59,130,246,0.18)',border:'1px solid rgba(59,130,246,0.4)'}}/>Monsoon Jun–Sep</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm inline-block" style={{background:'rgba(139,92,246,0.18)',border:'1px solid rgba(139,92,246,0.35)'}}/>AQI Oct–Dec</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm inline-block" style={{background:'rgba(148,163,184,0.12)',border:'1px solid rgba(148,163,184,0.3)'}}/>Winter Jan–Mar</span>
+                <span className="ml-2 flex items-center gap-1 text-slate-500"><Info className="w-3 h-3" />Solid green = real DB · Purple dashed = 6-month projection</span>
               </div>
 
               {loading && !tl ? (
                 <div className="h-80 flex items-center justify-center text-muted-foreground text-sm">Loading timeline...</div>
               ) : (
-                <ResponsiveContainer width="100%" height={360}>
-                  <ComposedChart data={chartPoints} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
+                <ResponsiveContainer width="100%" height={460}>
+                  <ComposedChart data={chartPoints} margin={{ top: 16, right: 24, bottom: 4, left: 0 }}>
                     <defs>
                       <linearGradient id="realGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor="#10a37f" stopOpacity={0.30} />
-                        <stop offset="95%" stopColor="#10a37f" stopOpacity={0.02} />
+                        <stop offset="0%"   stopColor="#10a37f" stopOpacity={0.45} />
+                        <stop offset="60%"  stopColor="#10a37f" stopOpacity={0.12} />
+                        <stop offset="100%" stopColor="#10a37f" stopOpacity={0.0} />
                       </linearGradient>
+                      <linearGradient id="projBandGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%"   stopColor="#a78bfa" stopOpacity={0.22} />
+                        <stop offset="100%" stopColor="#a78bfa" stopOpacity={0.04} />
+                      </linearGradient>
+                      <filter id="glow">
+                        <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
+                        <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                      </filter>
                     </defs>
 
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                    <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.04)" vertical={false} />
 
                     <XAxis
                       dataKey="label"
                       ticks={ticks}
-                      tick={{ fill: '#475569', fontSize: 9, fontFamily: 'monospace' }}
+                      tick={{ fill: '#64748b', fontSize: 9, fontFamily: 'monospace' }}
                       axisLine={false} tickLine={false}
                       interval={0}
                       angle={-35}
                       textAnchor="end"
-                      height={50}
+                      height={52}
                     />
                     <YAxis
-                      domain={[0.20, 1.20]}
+                      domain={[yMin, yMax]}
                       tickFormatter={v => `${(v * 100).toFixed(0)}%`}
-                      tick={{ fill: '#475569', fontSize: 10, fontFamily: 'monospace' }}
-                      axisLine={false} tickLine={false} width={42}
+                      tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }}
+                      axisLine={false} tickLine={false} width={44}
                     />
-                    <Tooltip content={<ChartTooltip />} />
+                    <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.08)', strokeWidth: 1 }} />
 
-                    {/* Target band (55–70%) */}
-                    <ReferenceArea y1={TARGET_LO} y2={TARGET_HI} fill="rgba(16,163,127,0.05)" />
-                    {/* Watch band (70–85%) */}
-                    <ReferenceArea y1={TARGET_HI} y2={SUSPEND} fill="rgba(245,158,11,0.04)" />
+                    {/* ── Season background bands ── */}
+                    {seasonBands.map((b, i) => (
+                      <ReferenceArea key={`sb-${i}`} x1={b.x1} x2={b.x2} fill={b.color} stroke="none" />
+                    ))}
 
-                    {/* Suspend line */}
-                    <ReferenceLine y={SUSPEND} stroke="rgba(239,68,68,0.55)" strokeDasharray="6 3"
-                      label={{ value: 'Suspend 85%', fill: '#ef4444', fontSize: 9, fontFamily: 'monospace', position: 'insideTopRight' }} />
+                    {/* BCR threshold bands */}
+                    <ReferenceArea y1={TARGET_LO} y2={TARGET_HI} fill="rgba(16,163,127,0.03)" />
+                    <ReferenceArea y1={TARGET_HI} y2={SUSPEND}   fill="rgba(245,158,11,0.025)" />
+
+                    {/* Threshold lines */}
+                    <ReferenceLine y={SUSPEND} stroke="rgba(239,68,68,0.45)" strokeDasharray="5 4" strokeWidth={1}
+                      label={{ value: 'Suspend 85%', fill: '#ef444480', fontSize: 8, fontFamily: 'monospace', position: 'insideTopRight' }} />
+                    <ReferenceLine y={TARGET_LO} stroke="rgba(16,163,127,0.25)" strokeDasharray="3 4" strokeWidth={1} />
 
                     {/* NOW marker */}
                     <ReferenceLine x={tl?.current_week.week_label ?? ''}
-                      stroke="rgba(251,191,36,0.55)" strokeWidth={1.5} strokeDasharray="4 2"
-                      label={{ value: 'NOW', fill: '#fbbf24', fontSize: 9, fontFamily: 'monospace', position: 'insideTopLeft' }} />
+                      stroke="rgba(251,191,36,0.6)" strokeWidth={1} strokeDasharray="3 3"
+                      label={{ value: 'NOW', fill: '#fbbf2499', fontSize: 8, fontFamily: 'monospace', position: 'insideTopLeft' }} />
 
-                    {/* Simulated history — thin dashed grey, no fill */}
-                    <Line
-                      type="monotone" dataKey="bcr"
-                      stroke="#475569" strokeWidth={1} strokeDasharray="4 3"
-                      dot={false} connectNulls={false} isAnimationActive={false}
-                      // Only render for simulated zone — handled by data structure
-                    />
-
-                    {/* Real history — solid green area (renders over simulated because of data ordering) */}
+                    {/* Real DB — solid green area */}
                     <Area
                       type="monotone" dataKey="bcr"
-                      stroke="#10a37f" strokeWidth={2.5}
+                      stroke="#10a37f" strokeWidth={2}
                       fill="url(#realGrad)"
                       dot={false} connectNulls={false} isAnimationActive={false}
                     />
 
-                    {/* Confidence band — stacked area */}
-                    <Area type="monotone" dataKey="band_base" stroke="none" fill="transparent"
+                    {/* Projection confidence band (P10–P90) */}
+                    <Area type="monotone" dataKey="band_base"  stroke="none" fill="transparent"
                       dot={false} connectNulls={false} isAnimationActive={false} legendType="none" stackId="band" />
-                    <Area type="monotone" dataKey="band_width" stroke="none" fill="rgba(139,92,246,0.18)"
+                    <Area type="monotone" dataKey="band_width" stroke="none" fill="url(#projBandGrad)"
                       dot={false} connectNulls={false} isAnimationActive={false} legendType="none" stackId="band" />
 
-                    {/* Projection mean dashed */}
+                    {/* Projection P50 mean line */}
                     <Line type="monotone" dataKey="bcr_mean"
-                      stroke="#a78bfa" strokeWidth={2} strokeDasharray="6 3"
+                      stroke="#a78bfa" strokeWidth={2.5} strokeDasharray="6 3"
                       dot={{ fill: '#a78bfa', r: 3, strokeWidth: 0 }}
+                      activeDot={{ r: 5 }}
                       connectNulls={false} isAnimationActive={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -601,7 +657,7 @@ export default function DataTimeline() {
                 <div className="mt-4 pt-3 border-t border-border flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground font-mono uppercase tracking-widest">
                   <span>Real avg BCR: {(tl.meta.avg_real_bcr * 100).toFixed(1)}%</span>
                   <span>·</span>
-                  <span>Est. history: {tl.meta.simulated_weeks} wks (algorithm)</span>
+                  <span>Est. history: {tl.meta.simulated_weeks} wks · full seasonal cycle</span>
                   <span>·</span>
                   <span>MC paths: {tl.meta.monte_carlo_paths}</span>
                   <span>·</span>
@@ -675,7 +731,7 @@ export default function DataTimeline() {
                   {suspAny && <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-destructive/10 text-destructive uppercase">Suspension Risk</span>}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {tl.meta.monte_carlo_paths} paths · 12 weeks forward · scenario: <span className="text-foreground font-medium">{tl.meta.scenario_label}</span> — {tl.meta.scenario_desc}
+                  {tl.meta.monte_carlo_paths} paths · {tl.meta.projection_weeks} weeks forward · scenario: <span className="text-foreground font-medium">{tl.meta.scenario_label}</span> — {tl.meta.scenario_desc}
                 </p>
               </div>
 

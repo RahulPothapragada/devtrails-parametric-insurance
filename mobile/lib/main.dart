@@ -362,7 +362,7 @@ class _ForecastScreenState extends State<ForecastScreen> {
                            borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          p.risk.toUpperCase() + ' RISK',
+                          '${p.risk.toUpperCase()} RISK',
                           style: GoogleFonts.inter(
                              color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800
                           )

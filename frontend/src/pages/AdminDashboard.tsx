@@ -1,13 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   RefreshCw, AlertTriangle, ArrowLeft, X, Activity, Shield, MapPin, FileText,
   LayoutDashboard, ShieldCheck, BarChart2, LineChart, FileText as FileTextIcon,
   Settings, HelpCircle, User, Download, Filter, ChevronLeft, ChevronRight,
-  TrendingUp, Zap, Search, LogIn, FlameKindling
+  TrendingUp, Zap, Search, LogIn, FlameKindling, LogOut, Database, GitFork
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/supabase';
+import type { Session } from '@supabase/supabase-js';
+import ActuarialDashboard from './ActuarialDashboard';
+import DataTimeline from './DataTimeline';
+import FraudGraphPage from './FraudGraphPage';
 
 import { API_BASE as API } from '@/lib/api';
 
@@ -54,16 +59,15 @@ function fmt(n: number) {
 
 // ── Sidebar ──
 const NAV_ITEMS = [
-  { icon: LayoutDashboard, label: 'Dashboard',    to: '/admin',     active: false },
-  { icon: ShieldCheck,     label: 'Policies',     to: '#',          active: true  },
-  { icon: BarChart2,       label: 'Underwriting', to: '#',          active: false },
-  { icon: LineChart,       label: 'Analytics',    to: '/actuarial', active: false },
-  { icon: AlertTriangle,   label: 'Fraud Defense',to: '/fraud',     active: false },
-  { icon: FileTextIcon,    label: 'Documents',    to: '#',          active: false },
-  { icon: Settings,        label: 'Settings',     to: '#',          active: false },
+  { icon: LayoutDashboard, label: 'Dashboard', to: '/admin' },
+  { icon: LineChart,       label: 'Analytics', to: '/admin/analytics' },
+  { icon: GitFork,         label: 'Fraud Graph', to: '/admin/graph' },
+  { icon: Database,        label: 'Data',      to: '/admin/data' },
 ];
 
 function Sidebar() {
+  const location = useLocation();
+
   return (
     <nav className="fixed left-0 top-0 h-full flex flex-col z-50 bg-[#faf8ff] border-r border-[#e8ecf8] w-64">
       {/* Logo */}
@@ -79,36 +83,43 @@ function Sidebar() {
 
       {/* Nav Links */}
       <div className="flex-1 space-y-0.5 px-3">
-        {NAV_ITEMS.map(({ icon: Icon, label, to, active }) => (
-          <Link
-            key={label}
-            to={to}
-            className={cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 group",
-              active
-                ? "bg-white text-[#00488d] shadow-[0_1px_4px_rgba(0,72,141,0.10)]"
-                : "text-[#727783] hover:bg-white/70 hover:text-[#131b2e] hover:translate-x-0.5"
-            )}
-          >
-            <Icon className={cn("w-4 h-4 shrink-0", active ? "text-[#00488d]" : "text-[#b0b5c3] group-hover:text-[#00488d]")} />
-            {label}
-          </Link>
-        ))}
+        {NAV_ITEMS.map(({ icon: Icon, label, to }) => {
+          const active = location.pathname === to;
+          return (
+            <Link
+              key={label}
+              to={to}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 group",
+                active
+                  ? "bg-white text-[#00488d] shadow-[0_1px_4px_rgba(0,72,141,0.10)]"
+                  : "text-[#727783] hover:bg-white/70 hover:text-[#131b2e] hover:translate-x-0.5"
+              )}
+            >
+              <Icon className={cn("w-4 h-4 shrink-0", active ? "text-[#00488d]" : "text-[#b0b5c3] group-hover:text-[#00488d]")} />
+              {label}
+            </Link>
+          );
+        })}
       </div>
 
       {/* Bottom Actions */}
-      <div className="mt-auto border-t border-[#e8ecf8] pt-4 px-3 pb-5 space-y-1">
-        <Link to="/" className="w-full mb-3 block">
+      <div className="mt-auto border-t border-[#e8ecf8] pt-4 px-3 pb-5 space-y-2">
+        <a
+          href="/rider"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-[#727783] hover:bg-white/70 hover:text-[#131b2e] transition-all duration-150 group"
+        >
+          <User className="w-4 h-4 shrink-0 text-[#b0b5c3] group-hover:text-[#00488d]" />
+          <span>Rider Portal</span>
+          <span className="ml-auto text-[10px] text-[#b0b5c3] group-hover:text-[#727783]">↗</span>
+        </a>
+        <Link to="/" className="w-full block">
           <button className="w-full py-2.5 px-4 bg-gradient-to-br from-[#00488d] to-[#005fb8] text-white rounded-xl font-semibold text-sm shadow-sm hover:shadow-md active:scale-[0.98] transition-all">
             ← Back to Home
           </button>
         </Link>
-        <a href="#" className="flex items-center gap-3 px-3 py-2.5 text-[#727783] hover:bg-white/70 rounded-xl transition-all text-sm">
-          <HelpCircle className="w-4 h-4" />Support
-        </a>
-        <a href="#" className="flex items-center gap-3 px-3 py-2.5 text-[#727783] hover:bg-white/70 rounded-xl transition-all text-sm">
-          <User className="w-4 h-4" />Account
-        </a>
       </div>
     </nav>
   );
@@ -141,32 +152,75 @@ function RiderModal({ rider, onClose }: { rider: any; onClose: () => void }) {
 
         {/* Modal Body */}
         <div className="p-7 grid grid-cols-2 gap-6">
+          {/* Row 1 */}
           <div className="flex flex-col gap-1.5">
             <span className="text-[10px] uppercase font-bold text-[#727783] tracking-widest flex items-center gap-1.5"><Activity className="w-3.5 h-3.5" />Monthly Earnings</span>
-            <span className="text-2xl font-bold text-[#131b2e]">₹{Math.round(rider.earnings_monthly).toLocaleString('en-IN')}</span>
+            <span className="text-2xl font-bold text-[#131b2e]">₹{(rider.earnings_monthly || 0).toLocaleString('en-IN')}</span>
           </div>
           <div className="flex flex-col gap-1.5">
             <span className="text-[10px] uppercase font-bold text-[#727783] tracking-widest flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" />Policy Status</span>
-            <span className="text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg w-fit">{rider.policy_status || 'Active'}</span>
+            <span className={cn("text-sm font-bold px-3 py-1.5 rounded-lg w-fit border",
+              rider.policy_status === 'Flagged'
+                ? 'text-red-700 bg-red-50 border-red-100'
+                : 'text-emerald-700 bg-emerald-50 border-emerald-100'
+            )}>{rider.policy_status || 'Active'}</span>
           </div>
+
+          {/* Row 2 */}
           <div className="flex flex-col gap-1.5">
             <span className="text-[10px] uppercase font-bold text-[#727783] tracking-widest flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" />Risk Verdict</span>
             <span className={cn("text-sm font-bold capitalize px-3 py-1.5 rounded-lg w-fit border",
-              rider.status === 'normal' ? 'text-emerald-700 bg-emerald-50 border-emerald-100' :
+              rider.status === 'normal'   ? 'text-emerald-700 bg-emerald-50 border-emerald-100' :
               rider.status === 'spoofing' ? 'text-amber-700 bg-amber-50 border-amber-100' :
-              'text-red-700 bg-red-50 border-red-100'
+                                           'text-red-700 bg-red-50 border-red-100'
             )}>
               {rider.verdict || 'Nominal Signal'}
             </span>
           </div>
           <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] uppercase font-bold text-[#727783] tracking-widest flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />Payout History</span>
-            <span className="text-sm font-medium text-[#424752] pt-1">{rider.payout_history || '—'}</span>
+            <span className="text-[10px] uppercase font-bold text-[#727783] tracking-widest flex items-center gap-1.5"><Zap className="w-3.5 h-3.5" />Fraud Score</span>
+            <div className="flex items-center gap-2 pt-0.5">
+              <div className="flex-1 h-2 bg-[#f2f3ff] rounded-full overflow-hidden border border-[#e8ecf8]">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${rider.fraud_score || 0}%`,
+                    background: (rider.fraud_score || 0) > 70 ? '#ef4444' : (rider.fraud_score || 0) > 40 ? '#f59e0b' : '#10a37f',
+                  }}
+                />
+              </div>
+              <span className="text-sm font-bold font-mono text-[#131b2e] w-8 text-right">{rider.fraud_score ?? '—'}</span>
+            </div>
           </div>
+
+          {/* Row 3 */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] uppercase font-bold text-[#727783] tracking-widest flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5" />Shield Level</span>
+            <div className="flex items-center gap-1 pt-0.5">
+              {[1,2,3,4,5].map(i => (
+                <div key={i} className={cn("w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold border",
+                  i <= (rider.shield_level || 0)
+                    ? 'bg-[#00488d] text-white border-[#00488d]'
+                    : 'bg-[#f2f3ff] text-[#b0b5c3] border-[#e8ecf8]'
+                )}>{i}</div>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] uppercase font-bold text-[#727783] tracking-widest flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />KYC / Aadhaar</span>
+            <span className={cn("text-sm font-bold px-3 py-1.5 rounded-lg w-fit border",
+              rider.aadhaar_verified
+                ? 'text-emerald-700 bg-emerald-50 border-emerald-100'
+                : 'text-amber-700 bg-amber-50 border-amber-100'
+            )}>{rider.aadhaar_verified ? 'Verified ✓' : 'Pending'}</span>
+          </div>
+
+          {/* Location */}
           <div className="col-span-2 flex flex-col gap-2 pt-4 border-t border-[#e8ecf8]">
             <span className="text-[10px] uppercase font-bold text-[#727783] tracking-widest flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" />Last Known Location</span>
             <div className="flex justify-between items-center bg-[#f2f3ff] p-3.5 rounded-xl font-mono text-sm border border-[#e8ecf8]">
               <span className="text-[#727783]">LAT: <span className="text-[#131b2e] font-semibold">{rider.lat?.toFixed(5) || 'Unknown'}</span></span>
+              <span className="text-[#727783]">Zone: <span className="text-[#131b2e] font-semibold">{rider.location || 'Unknown'}</span></span>
               <span className="text-[#727783]">LNG: <span className="text-[#131b2e] font-semibold">{rider.lng?.toFixed(5) || 'Unknown'}</span></span>
             </div>
           </div>
@@ -176,8 +230,239 @@ function RiderModal({ rider, onClose }: { rider: any; onClose: () => void }) {
   );
 }
 
-// ── Main Component ──
-export default function AdminDashboard() {
+// ── Admin Login Gate — Apple design language ──
+const GOOGLE_CLIENT_ID = '262110215243-qh532bmm4eeqdqjl30se0comeledcpit.apps.googleusercontent.com';
+
+function AdminLoginGate({ initialError = '', onDemoAccess }: { initialError?: string; onDemoAccess: () => void }) {
+  const [email, setEmail]                 = useState('');
+  const [password, setPassword]           = useState('');
+  const [loading, setLoading]             = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [error, setError]                 = useState(initialError);
+  const [gisReady, setGisReady]           = useState(false);
+  const gisRef                            = useRef<HTMLDivElement>(null);
+  const [demoCode, setDemoCode]           = useState('');
+  const [demoError, setDemoError]         = useState('');
+
+  const appleFontFamily = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif";
+
+  // Called by Google GIS with an ID token — no redirect needed
+  const onGoogleCredential = useCallback(async ({ credential }: { credential: string }) => {
+    setGoogleLoading(true);
+    setError('');
+    const { error } = await supabase.auth.signInWithIdToken({
+      provider: 'google',
+      token: credential,
+    });
+    if (error) {
+      setError(error.message);
+      setGoogleLoading(false);
+    }
+    // On success: onAuthStateChange in the wrapper fires and opens the dashboard
+  }, []);
+
+  // Step 1 — wait for GIS script to load, then initialize
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval>;
+    const tryInit = () => {
+      // Access window.google INSIDE this function — not captured early
+      const g = (window as any).google;
+      if (!g?.accounts?.id) return;
+      clearInterval(timer);
+      g.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: onGoogleCredential,
+        auto_select: false,
+        cancel_on_tap_outside: true,
+      });
+      setGisReady(true);
+    };
+    tryInit();
+    timer = setInterval(tryInit, 150);
+    return () => clearInterval(timer);
+  }, [onGoogleCredential]);
+
+  // Step 2 — render the button once GIS is ready and the container div is in the DOM
+  useEffect(() => {
+    if (!gisReady || !gisRef.current) return;
+    const g = (window as any).google;
+    gisRef.current.innerHTML = ''; // clear any previous render
+    g.accounts.id.renderButton(gisRef.current, {
+      theme: 'outline',
+      size: 'large',
+      shape: 'pill',
+      text: 'continue_with',
+      width: 304,
+    });
+  }, [gisReady]);
+
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) { setError('Please enter your email and password.'); return; }
+    setLoading(true); setError('');
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setError(error.message);
+    setLoading(false);
+  };
+
+  return (
+    <div
+      className="min-h-screen bg-[#F5F5F7] flex flex-col items-center justify-center px-6"
+      style={{ fontFamily: appleFontFamily, WebkitFontSmoothing: 'antialiased' }}
+    >
+      {/* Logo lockup */}
+      <motion.div
+        initial={{ opacity: 0, y: -12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
+        className="flex flex-col items-center mb-10"
+      >
+        <div className="w-12 h-12 rounded-[14px] bg-[#0071E3] flex items-center justify-center mb-4 shadow-[0_4px_16px_rgba(0,113,227,0.30)]">
+          <Shield className="w-6 h-6 text-white" />
+        </div>
+        <p className="text-[13px] font-semibold tracking-widest text-[#86868B] uppercase">FlowSecure</p>
+      </motion.div>
+
+      {/* Card */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: [0.25, 0.1, 0.25, 1], delay: 0.05 }}
+        className="w-full max-w-[360px] bg-white rounded-[20px] shadow-[0_2px_24px_rgba(0,0,0,0.08)] overflow-hidden"
+      >
+        <div className="px-8 pt-8 pb-7">
+          <h1 className="text-[22px] font-bold tracking-tight text-[#1D1D1F] mb-1">Sign in</h1>
+          <p className="text-[13px] text-[#86868B] font-medium mb-6">to FlowSecure Admin</p>
+
+          {/* Google GIS button — always mounted so renderButton stays alive */}
+          <div className="flex justify-center items-center min-h-[44px] mb-1 relative">
+            {/* Skeleton while GIS script loads */}
+            {!gisReady && !googleLoading && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-[304px] h-[44px] rounded-full bg-[#F5F5F7] border border-[#E5E5EA] animate-pulse" />
+              </div>
+            )}
+            {/* Loading overlay */}
+            {googleLoading && (
+              <div className="absolute inset-0 flex items-center justify-center gap-2 text-[13px] text-[#86868B]">
+                <RefreshCw className="w-4 h-4 animate-spin" /> Signing in with Google…
+              </div>
+            )}
+            {/* GIS renders its button here — never unmounted */}
+            <div ref={gisRef} style={{ visibility: googleLoading ? 'hidden' : 'visible' }} />
+          </div>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 my-5">
+            <div className="flex-1 h-px bg-[#E5E5EA]" />
+            <span className="text-[11px] text-[#AEAEB2] font-semibold uppercase tracking-widest">or</span>
+            <div className="flex-1 h-px bg-[#E5E5EA]" />
+          </div>
+
+          <form onSubmit={handlePasswordLogin} className="flex flex-col gap-3">
+            {/* Email */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-[#86868B] uppercase tracking-wider pl-0.5">Email</label>
+              <input
+                type="email"
+                autoComplete="email"
+                placeholder="admin@flowsecure.in"
+                value={email}
+                onChange={e => { setEmail(e.target.value); setError(''); }}
+                className="w-full px-4 py-3 rounded-xl border border-[#D1D1D6] bg-white text-[14px] text-[#1D1D1F] placeholder:text-[#AEAEB2] outline-none transition-all focus:border-[#0071E3] focus:ring-2 focus:ring-[#0071E3]/10 font-medium"
+                style={{ fontFamily: appleFontFamily }}
+              />
+            </div>
+
+            {/* Password */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-[#86868B] uppercase tracking-wider pl-0.5">Password</label>
+              <input
+                type="password"
+                autoComplete="current-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={e => { setPassword(e.target.value); setError(''); }}
+                className="w-full px-4 py-3 rounded-xl border border-[#D1D1D6] bg-white text-[14px] text-[#1D1D1F] placeholder:text-[#AEAEB2] outline-none transition-all focus:border-[#0071E3] focus:ring-2 focus:ring-[#0071E3]/10 font-medium"
+                style={{ fontFamily: appleFontFamily }}
+              />
+            </div>
+
+            {/* Error */}
+            {error && <p className="text-[#FF3B30] text-[12px] font-medium text-center">{error}</p>}
+
+            {/* Sign in button */}
+            <button
+              type="submit"
+              disabled={loading || googleLoading}
+              className="w-full mt-1 py-3 bg-[#0071E3] hover:bg-[#0077ED] active:bg-[#006ACF] text-white rounded-full font-semibold text-[15px] tracking-tight transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 shadow-[0_2px_8px_rgba(0,113,227,0.28)]"
+            >
+              {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Signing in…</> : 'Sign in'}
+            </button>
+          </form>
+        </div>
+
+        {/* Demo access code — for judges/evaluators */}
+        <div className="px-8 py-5 bg-[#F5F5F7] border-t border-[#E5E5EA]">
+          <p className="text-[11px] text-[#AEAEB2] font-semibold uppercase tracking-widest text-center mb-3">
+            Judge / Evaluator Access
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Enter access code"
+              value={demoCode}
+              onChange={e => { setDemoCode(e.target.value.toUpperCase()); setDemoError(''); }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  if (demoCode === DEMO_ACCESS_CODE) onDemoAccess();
+                  else setDemoError('Invalid code');
+                }
+              }}
+              className="flex-1 px-3 py-2 rounded-xl border border-[#D1D1D6] bg-white text-[13px] font-mono text-[#1D1D1F] placeholder:text-[#AEAEB2] outline-none focus:border-[#0071E3] transition-all tracking-widest"
+            />
+            <button
+              onClick={() => {
+                if (demoCode === DEMO_ACCESS_CODE) onDemoAccess();
+                else setDemoError('Invalid code');
+              }}
+              className="px-4 py-2 bg-[#1D1D1F] text-white rounded-xl text-[13px] font-semibold hover:bg-[#3D3D3F] transition-all active:scale-[0.97]"
+            >
+              Enter
+            </button>
+          </div>
+          {demoError && <p className="text-[#FF3B30] text-[11px] font-medium text-center mt-2">{demoError}</p>}
+        </div>
+      </motion.div>
+
+      {/* Bottom branding */}
+      <motion.p
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.3 }}
+        className="mt-8 text-[11px] text-[#AEAEB2] font-medium"
+      >
+        © 2025 FlowSecure Insurtech Solutions
+      </motion.p>
+    </div>
+  );
+}
+
+// ── Dashboard Content (only rendered when authenticated) ──
+function AdminContent({ session }: { session: Session }) {
+  const location    = useLocation();
+  const isAnalytics = location.pathname === '/admin/analytics';
+  const isData      = location.pathname === '/admin/data';
+  const isGraph     = location.pathname === '/admin/graph';
+  const isSubPage   = isAnalytics || isData || isGraph;
+
+  const userName   = session.user.user_metadata?.full_name
+                  ?? session.user.user_metadata?.name
+                  ?? session.user.email?.split('@')[0]
+                  ?? 'Admin';
+  const userAvatar = session.user.user_metadata?.avatar_url as string | undefined;
+  const userEmail  = session.user.email ?? '';
+  const initials   = userName.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
   const [stats, setStats]         = useState<StatsData | null>(null);
   const [actuarial, setActuarial] = useState<CityActuarial[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -282,51 +567,88 @@ export default function AdminDashboard() {
           <div className="flex justify-between items-center w-full px-8 py-3.5 max-w-7xl mx-auto">
             <div className="flex items-center gap-8">
               <h1 className="text-lg font-bold tracking-tight text-[#131b2e]" style={{ fontFamily: "'Manrope', sans-serif" }}>
-                {selectedCity ? `${selectedCity} — Rider Network` : 'Claims Center'}
+                {isAnalytics ? 'Analytics' : isData ? 'Data Timeline' : selectedCity ? `${selectedCity} — Rider Network` : 'Claims Center'}
               </h1>
-              <nav className="hidden md:flex items-center gap-6">
-                {['Solutions','Claims','Risk Analysis'].map((t, i) => (
-                  <a key={t} href="#" className={cn(
-                    "text-sm py-1 transition-colors",
-                    i === 0
-                      ? "text-[#00488d] font-semibold border-b-2 border-[#00488d]"
-                      : "text-[#727783] hover:text-[#131b2e]"
-                  )}>{t}</a>
-                ))}
-              </nav>
+              {!isSubPage && (
+                <nav className="hidden md:flex items-center gap-6">
+                  {['Solutions','Claims','Risk Analysis'].map((t, i) => (
+                    <a key={t} href="#" className={cn(
+                      "text-sm py-1 transition-colors",
+                      i === 0
+                        ? "text-[#00488d] font-semibold border-b-2 border-[#00488d]"
+                        : "text-[#727783] hover:text-[#131b2e]"
+                    )}>{t}</a>
+                  ))}
+                </nav>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
-              {/* Search */}
-              <div className="relative hidden lg:block">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#b0b5c3] w-4 h-4" />
-                <input
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-4 py-2 bg-white ring-1 ring-[#c2c6d4]/30 focus:ring-2 focus:ring-[#00488d] rounded-full text-sm w-60 outline-none transition-all border-0"
-                  placeholder={selectedCity ? "Search riders..." : "Search cities..."}
-                />
+              {/* Search — only on Dashboard */}
+              {!isSubPage && (
+                <>
+                  <div className="relative hidden lg:block">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#b0b5c3] w-4 h-4" />
+                    <input
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      className="pl-9 pr-4 py-2 bg-white ring-1 ring-[#c2c6d4]/30 focus:ring-2 focus:ring-[#00488d] rounded-full text-sm w-60 outline-none transition-all border-0"
+                      placeholder={selectedCity ? "Search riders..." : "Search cities..."}
+                    />
+                  </div>
+                  {error && <span className="text-xs text-red-600 font-bold hidden md:block">{error}</span>}
+                  <span className="text-xs text-[#b0b5c3] hidden md:block">Updated {lastRefresh.toLocaleTimeString()}</span>
+                  <button
+                    onClick={fetchAll} disabled={loading}
+                    className="p-2 text-[#727783] hover:text-[#00488d] hover:bg-white rounded-lg transition-all"
+                  >
+                    <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+                  </button>
+                </>
+              )}
+              {/* User pill */}
+              <div className="flex items-center gap-2.5 pl-2 border-l border-[#e8ecf8]">
+                {userAvatar ? (
+                  <img src={userAvatar} alt={userName} className="w-7 h-7 rounded-full object-cover ring-2 ring-[#e8ecf8]" />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-[#0071E3] flex items-center justify-center text-white text-[10px] font-bold ring-2 ring-[#e8ecf8]">
+                    {initials}
+                  </div>
+                )}
+                <div className="hidden md:flex flex-col leading-tight">
+                  <span className="text-xs font-semibold text-[#131b2e] max-w-[120px] truncate">{userName}</span>
+                  <span className="text-[10px] text-[#727783] max-w-[120px] truncate">{userEmail}</span>
+                </div>
+                <button
+                  onClick={() => supabase.auth.signOut().then(() => window.location.reload())}
+                  title="Sign out"
+                  className="ml-1 p-1.5 text-[#727783] hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
               </div>
-              {error && <span className="text-xs text-red-600 font-bold hidden md:block">{error}</span>}
-              <span className="text-xs text-[#b0b5c3] hidden md:block">Updated {lastRefresh.toLocaleTimeString()}</span>
-              <button
-                onClick={fetchAll} disabled={loading}
-                className="p-2 text-[#727783] hover:text-[#00488d] hover:bg-white rounded-lg transition-all"
-              >
-                <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
-              </button>
-              <button className="flex items-center gap-1.5 px-4 py-2 text-[#00488d] font-semibold text-sm hover:bg-[#f2f3ff] rounded-lg transition-colors">
-                <LogIn className="w-4 h-4" /> Login
-              </button>
-              <button className="px-5 py-2 bg-gradient-to-br from-[#00488d] to-[#005fb8] text-white rounded-xl font-bold text-sm shadow-sm hover:shadow-md active:scale-[0.98] transition-all">
-                Get Started
-              </button>
             </div>
           </div>
         </header>
 
         {/* Page Content */}
-        <div className="p-8 max-w-7xl mx-auto w-full space-y-8">
+        {isAnalytics && (
+          <div className="flex-1 bg-[#faf8ff] min-h-0">
+            <ActuarialDashboard />
+          </div>
+        )}
+        {isData && (
+          <div className="flex-1 min-h-0">
+            <DataTimeline />
+          </div>
+        )}
+        {isGraph && (
+          <div className="flex-1 min-h-0">
+            <FraudGraphPage />
+          </div>
+        )}
+
+        <div className={cn("p-8 max-w-7xl mx-auto w-full space-y-8", isSubPage && "hidden")}>
 
           {/* ── Bento Stats ── */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
@@ -341,14 +663,17 @@ export default function AdminDashboard() {
               </div>
               <div className="mt-5 flex items-center gap-4">
                 <div className="flex -space-x-2">
-                  {['#dae2fd','#d5e3fc','#f2f3ff'].map((bg, i) => (
-                    <div key={i} className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-[#00488d]" style={{ background: bg }}>
-                      {['M', 'D', 'B'][i]}
+                  {actuarial.slice(0, 3).map((c, i) => (
+                    <div key={i} className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-[#00488d]"
+                      style={{ background: ['#dae2fd','#d5e3fc','#f2f3ff'][i] }}>
+                      {c.city.charAt(0)}
                     </div>
                   ))}
-                  <div className="w-8 h-8 rounded-full border-2 border-white bg-[#f2f3ff] flex items-center justify-center text-[10px] font-bold text-[#727783]">+10</div>
+                  {actuarial.length > 3 && (
+                    <div className="w-8 h-8 rounded-full border-2 border-white bg-[#f2f3ff] flex items-center justify-center text-[10px] font-bold text-[#727783]">+{actuarial.length - 3}</div>
+                  )}
                 </div>
-                <span className="text-xs text-[#727783] font-medium italic">13 cities · PAN India Network</span>
+                <span className="text-xs text-[#727783] font-medium italic">{actuarial.length} cities · PAN India Network</span>
               </div>
             </div>
 
@@ -479,6 +804,9 @@ export default function AdminDashboard() {
                         <th className="px-6 py-4 border-b border-[#e8ecf8]">Rider</th>
                         <th className="px-6 py-4 border-b border-[#e8ecf8]">Rider ID</th>
                         <th className="px-6 py-4 border-b border-[#e8ecf8]">Risk Status</th>
+                        <th className="px-6 py-4 border-b border-[#e8ecf8]">Fraud Score</th>
+                        <th className="px-6 py-4 border-b border-[#e8ecf8]">Shield</th>
+                        <th className="px-6 py-4 border-b border-[#e8ecf8]">KYC</th>
                         <th className="px-6 py-4 border-b border-[#e8ecf8]">Policy</th>
                         <th className="px-6 py-4 border-b border-[#e8ecf8] text-right">M. Earnings</th>
                         <th className="px-6 py-4 border-b border-[#e8ecf8] text-right">Actions</th>
@@ -486,11 +814,11 @@ export default function AdminDashboard() {
                     </thead>
                     <tbody className="text-sm">
                       {loadingRiders ? (
-                        <tr><td colSpan={6} className="px-6 py-12 text-center text-[#b0b5c3]">
+                        <tr><td colSpan={9} className="px-6 py-12 text-center text-[#b0b5c3]">
                           <RefreshCw className="w-5 h-5 animate-spin mx-auto" />
                         </td></tr>
                       ) : filteredRiders.length === 0 && !loadingRiders ? (
-                        <tr><td colSpan={6} className="px-6 py-12 text-center text-[#b0b5c3]">No riders found.</td></tr>
+                        <tr><td colSpan={9} className="px-6 py-12 text-center text-[#b0b5c3]">No riders found.</td></tr>
                       ) : filteredRiders.map((r: any, idx: number) => (
                         <tr
                           key={r.id}
@@ -508,7 +836,12 @@ export default function AdminDashboard() {
                               )}>
                                 {r.name?.charAt(0) || 'R'}
                               </div>
-                              <span className="font-semibold text-[#131b2e] group-hover:text-[#00488d] transition-colors">{r.name}</span>
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-[#131b2e] group-hover:text-[#00488d] transition-colors">{r.name}</span>
+                                {r.verdict && r.verdict !== 'Nominal Signal Pattern' && (
+                                  <span className="text-[10px] text-red-500 font-medium truncate max-w-[140px]">{r.verdict}</span>
+                                )}
+                              </div>
                             </div>
                           </td>
                           <td className="px-6 py-4 font-mono text-xs text-[#727783]">#{r.id?.split('-').pop()}</td>
@@ -522,10 +855,50 @@ export default function AdminDashboard() {
                               {r.status === 'normal' ? 'Clean' : r.status}
                             </span>
                           </td>
+                          {/* Fraud Score — colored bar */}
                           <td className="px-6 py-4">
-                            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100">Active</span>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-1.5 bg-[#f2f3ff] rounded-full overflow-hidden border border-[#e8ecf8] w-16">
+                                <div
+                                  className="h-full rounded-full transition-all"
+                                  style={{
+                                    width: `${r.fraud_score || 0}%`,
+                                    background: (r.fraud_score || 0) > 70 ? '#ef4444' : (r.fraud_score || 0) > 40 ? '#f59e0b' : '#10a37f',
+                                  }}
+                                />
+                              </div>
+                              <span className="text-xs font-bold font-mono text-[#131b2e] w-7 text-right">{r.fraud_score ?? '—'}</span>
+                            </div>
                           </td>
-                          <td className="px-6 py-4 text-right font-mono text-xs text-[#424752]">₹{Math.round(r.earnings_monthly).toLocaleString('en-IN')}</td>
+                          {/* Shield Level — tier dots */}
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-0.5">
+                              {[1,2,3,4,5].map(i => (
+                                <div key={i} className={cn("w-4 h-4 rounded flex items-center justify-center text-[8px] font-bold",
+                                  i <= (r.shield_level || 0)
+                                    ? 'bg-[#00488d] text-white'
+                                    : 'bg-[#f2f3ff] text-[#b0b5c3] border border-[#e8ecf8]'
+                                )}>{i}</div>
+                              ))}
+                            </div>
+                          </td>
+                          {/* KYC / Aadhaar */}
+                          <td className="px-6 py-4">
+                            <span className={cn("text-[11px] font-bold px-2.5 py-0.5 rounded-full border",
+                              r.aadhaar_verified
+                                ? "text-emerald-700 bg-emerald-50 border-emerald-100"
+                                : "text-amber-700 bg-amber-50 border-amber-100"
+                            )}>{r.aadhaar_verified ? '✓ Verified' : 'Pending'}</span>
+                          </td>
+                          {/* Policy Status */}
+                          <td className="px-6 py-4">
+                            <span className={cn("text-[11px] font-bold px-2.5 py-0.5 rounded-full border",
+                              r.policy_status === 'Flagged'
+                                ? "text-red-700 bg-red-50 border-red-100"
+                                : "text-emerald-700 bg-emerald-50 border-emerald-100"
+                            )}>{r.policy_status || 'Active'}</span>
+                          </td>
+                          <td className="px-6 py-4 text-right font-mono text-xs text-[#424752]">₹{Math.round(r.earnings_monthly || 0).toLocaleString('en-IN')}</td>
                           <td className="px-6 py-4 text-right">
                             <button
                               onClick={() => setSelectedRider(r)}
@@ -576,36 +949,25 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Live Claims Feed */}
-            <div className="bg-white border border-[#e8ecf8] p-6 rounded-2xl flex flex-col gap-3">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10a37f] opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#10a37f]" />
-                </span>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[#727783]">Live Claims Feed</span>
-              </div>
-              {liveFeed.length === 0 ? (
-                <p className="text-xs text-[#b0b5c3] text-center py-4">No recent claims</p>
-              ) : (
-                <div className="space-y-2 max-h-32 overflow-y-auto">
-                  {liveFeed.slice(0, 5).map((item: any, i: number) => (
-                    <div key={i} className="flex items-center justify-between text-xs border-b border-[#f2f3ff] pb-1.5 last:border-0">
-                      <div>
-                        <span className="font-semibold text-[#131b2e]">{item.rider_name}</span>
-                        <span className="text-[#727783] ml-1">· {item.location}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[#727783] capitalize">{item.trigger}</span>
-                        <span className={cn("font-bold", item.status === 'paid' ? 'text-[#10a37f]' : 'text-[#f59e0b]')}>
-                          ₹{item.payout.toLocaleString('en-IN')}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+            {/* Compliance Alert */}
+            <div className="bg-[#ffdbcb] p-6 rounded-2xl border border-[#ffb691]/40 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <FlameKindling className="w-4 h-4 text-[#7b3200]" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#341100]">Alert</span>
                 </div>
-              )}
-              <Link to="/fraud" className="text-xs font-bold underline decoration-2 underline-offset-4 mt-auto text-[#00488d] hover:text-[#341100]">
+                <h4 className="text-lg font-extrabold leading-tight text-[#341100]" style={{ fontFamily: "'Manrope', sans-serif" }}>
+                  {alertCities.length > 0
+                    ? `${alertCities.map(c => c.city).slice(0, 2).join(', ')} ${alertCities.length > 2 ? `+${alertCities.length - 2} more` : ''} — Risk Elevated`
+                    : 'All Zones Nominal'}
+                </h4>
+                <p className="text-xs text-[#783100] mt-2 leading-relaxed">
+                  {alertCities.length > 0
+                    ? 'Parametric triggers are approaching threshold. Review loss ratios immediately.'
+                    : 'All parametric triggers are within safe operating band. System healthy.'}
+                </p>
+              </div>
+              <Link to="/fraud" className="text-xs font-bold underline decoration-2 underline-offset-4 mt-4 block text-[#783100] hover:text-[#341100]">
                 Open Fraud Defense →
               </Link>
             </div>
@@ -614,7 +976,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Footer */}
-        <footer className="bg-[#faf8ff] py-10 border-t border-[#e8ecf8] mt-auto">
+        <footer className={cn("bg-[#faf8ff] py-10 border-t border-[#e8ecf8] mt-auto", isSubPage && "hidden")}>
           <div className="w-full px-8 max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="text-sm font-bold text-[#424752]" style={{ fontFamily: "'Manrope', sans-serif" }}>FlowSecure</div>
             <div className="flex flex-wrap justify-center gap-6">
@@ -628,4 +990,114 @@ export default function AdminDashboard() {
       </main>
     </div>
   );
+}
+
+// ── Admin email allowlist — add your team's emails here ──
+const ADMIN_EMAILS = new Set([
+  'rahulpothapragada@gmail.com',
+  // add more team emails here
+]);
+
+// ── Demo access code — share this in your pitch deck for judges ──
+const DEMO_ACCESS_CODE = 'GUIDEWIRE2026';
+
+const DEMO_SESSION = {
+  user: {
+    email: 'demo@guidewire-judge.com',
+    user_metadata: { full_name: 'Demo Admin' },
+  },
+} as unknown as Session;
+
+function isAdminEmail(email: string | undefined): boolean {
+  if (!email) return false;
+  return ADMIN_EMAILS.has(email.toLowerCase());
+}
+
+// ── Auth Wrapper ──
+export default function AdminDashboard() {
+  const [session,   setSession]   = useState<Session | null | undefined>(undefined);
+  const [authError, setAuthError] = useState('');
+  const [demoMode,  setDemoMode]  = useState(false);
+
+  const applySession = (s: Session | null) => {
+    if (s && !isAdminEmail(s.user.email)) {
+      supabase.auth.signOut();
+      setAuthError(`Access denied. ${s.user.email} is not an authorised admin account.`);
+      setSession(null);
+    } else {
+      setSession(s);
+    }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code   = params.get('code');
+    const oauthError = params.get('error_description') || params.get('error');
+
+    // ── Case 1: Supabase returned an error (e.g. user denied permission) ──
+    if (oauthError) {
+      setAuthError(decodeURIComponent(oauthError.replace(/\+/g, ' ')));
+      setSession(null);
+      window.history.replaceState({}, '', '/admin');
+      return;
+    }
+
+    // ── Case 2: Returning from Google OAuth with a PKCE code ──
+    if (code) {
+      supabase.auth
+        .exchangeCodeForSession(window.location.href)
+        .then(({ data, error }) => {
+          if (error) {
+            setAuthError(
+              error.message.includes('code_verifier')
+                ? 'Google sign-in failed: redirect URL may not be in Supabase allowlist. Add "http://localhost:5173/admin" under Authentication → URL Configuration in your Supabase dashboard.'
+                : error.message
+            );
+            setSession(null);
+          } else {
+            applySession(data.session);
+          }
+          window.history.replaceState({}, '', '/admin');
+        });
+      return;
+    }
+
+    // ── Case 3: Normal page load — check for existing stored session ──
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      applySession(s);
+    });
+
+    supabase.auth.getSession().then(({ data }) => {
+      applySession(data.session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const appleFontFamily = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif";
+
+  const isOAuthCallback = new URLSearchParams(window.location.search).has('code');
+
+  if (session === undefined) {
+    return (
+      <div
+        className="min-h-screen bg-[#F5F5F7] flex flex-col items-center justify-center gap-3"
+        style={{ fontFamily: appleFontFamily }}
+      >
+        <div className="w-10 h-10 rounded-[12px] bg-[#0071E3] flex items-center justify-center shadow-[0_4px_16px_rgba(0,113,227,0.30)]">
+          <Shield className="w-5 h-5 text-white" />
+        </div>
+        <RefreshCw className="w-4 h-4 animate-spin text-[#86868B]" />
+        <p className="text-[13px] text-[#86868B] font-medium">
+          {isOAuthCallback ? 'Completing Google sign‑in…' : 'Loading…'}
+        </p>
+      </div>
+    );
+  }
+
+  if (demoMode) return <AdminContent session={DEMO_SESSION} />;
+
+  if (!session) return <AdminLoginGate initialError={authError} onDemoAccess={() => setDemoMode(true)} />;
+
+  return <AdminContent session={session} />;
 }
