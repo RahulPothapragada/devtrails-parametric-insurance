@@ -168,11 +168,10 @@ function DetailPanel({ city, trendLoading, onClose }: { city: CityData; trendLoa
 
   return (
     <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
-      exit={{ opacity: 0, height: 0 }}
-      transition={{ duration: 0.35 }}
-      className="overflow-hidden"
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.25 }}
     >
       <div className={`${CARD} p-6 mt-0 border-t-2`} style={{ borderTopColor: cfg.color }}>
         <div className="flex justify-between items-center mb-6">
@@ -199,7 +198,7 @@ function DetailPanel({ city, trendLoading, onClose }: { city: CityData; trendLoa
               <p className="text-xs text-[#b0b5c3] mb-3">Loss Ratio Trend (red line = 85% suspension threshold)</p>
               <div className="h-[220px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={city.trend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <AreaChart data={city.trend} margin={{ top: 10, right: 70, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="lrGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%"  stopColor={cfg.color} stopOpacity={0.2} />
