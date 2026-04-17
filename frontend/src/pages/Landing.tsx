@@ -4,6 +4,7 @@ import { ProductSection } from '@/components/stitch/ProductSection';
 import { FeatureGrid } from '@/components/stitch/FeatureGrid';
 import { PricingModelFlow } from '@/components/stitch/PricingModelFlow';
 import { SecuritySection } from '@/components/stitch/SecuritySection';
+import { Testimonials } from '@/components/stitch/Testimonials';
 import { Footer } from '@/components/stitch/Footer';
 
 export default function Landing() {
@@ -20,7 +21,7 @@ export default function Landing() {
       <FeatureGrid />
       <PricingModelFlow />
       <SecuritySection />
-
+      <Testimonials />
       <Footer />
     </div>
   );
