@@ -40,6 +40,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
 import { cn } from '@/lib/utils';
 
 import { API_BASE as API } from '@/lib/api';
+import { clearAuthedCache } from '@/lib/cachedFetch';
 
 // ── Session cache — survives tab switches, cleared on browser close ──
 const CACHE_KEY = 'fs_dashboard_v1';
@@ -215,6 +216,12 @@ export default function RiderDashboard() {
       const res = await fetch(`${API}/auth/verify-otp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: loginPhone, otp: loginOtp }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Invalid OTP');
+      // Wipe any previous rider's cached dashboard/claims/policies before
+      // the new token takes effect — prevents a stale paint on rider switch.
+      clearAuthedCache();
+      sessionStorage.removeItem(CACHE_KEY);
+      sessionStorage.removeItem(PREDICT_KEY);
+      sessionStorage.removeItem(OPTIMIZE_KEY);
       localStorage.setItem('flowsecure_token', data.access_token);
       localStorage.setItem('flowsecure_rider_name', data.name);
       setLoggedIn(true); setRiderName(data.name);
@@ -228,6 +235,11 @@ export default function RiderDashboard() {
       const res = await fetch(`${API}/auth/demo-login?city=${encodeURIComponent(city)}`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Login failed');
+      // Same guard as OTP login — new rider, fresh cache.
+      clearAuthedCache();
+      sessionStorage.removeItem(CACHE_KEY);
+      sessionStorage.removeItem(PREDICT_KEY);
+      sessionStorage.removeItem(OPTIMIZE_KEY);
       localStorage.setItem('flowsecure_token', data.access_token);
       localStorage.setItem('flowsecure_rider_name', data.name);
       setLoggedIn(true); setRiderName(data.name);
@@ -305,6 +317,12 @@ export default function RiderDashboard() {
         if (res.status === 401) {
           localStorage.removeItem('flowsecure_token');
           localStorage.removeItem('flowsecure_rider_name');
+          // Token invalidated — drop any rider-scoped cache so the next login
+          // starts clean.
+          clearAuthedCache();
+          sessionStorage.removeItem(CACHE_KEY);
+          sessionStorage.removeItem(PREDICT_KEY);
+          sessionStorage.removeItem(OPTIMIZE_KEY);
           setLoggedIn(false); setRiderName('');
           setDashboardLoading(false);
           return;

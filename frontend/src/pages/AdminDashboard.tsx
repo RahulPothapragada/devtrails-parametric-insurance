@@ -502,8 +502,14 @@ function AdminContent({ session }: { session: Session }) {
   const fetchAll = async () => {
     setError(null);
     // SWR — paint cached data instantly, then refresh from network.
-    const statsSWR = swrFetch<any>(`${API}/admin/stats`, { maxAge: 5 * 60_000 });
-    const actuarialSWR = swrFetch<any>(`${API}/admin/actuarial`, { maxAge: 5 * 60_000 });
+    // Admin data is shared across users → localStorage so the first load of
+    // a new day is still instant (survives browser restart).
+    const statsSWR = swrFetch<any>(`${API}/admin/stats`, {
+      maxAge: 5 * 60_000, storage: "local",
+    });
+    const actuarialSWR = swrFetch<any>(`${API}/admin/actuarial`, {
+      maxAge: 5 * 60_000, storage: "local",
+    });
 
     if (statsSWR.cached) setStats(statsSWR.cached);
     if (actuarialSWR.cached) applyActuarial(actuarialSWR.cached);
@@ -532,7 +538,10 @@ function AdminContent({ session }: { session: Session }) {
     const fetchFeed = async () => {
       try {
         // 15s TTL — feed looks live but we don't hammer the network.
-        const data = await cachedFetch<any>(`${API}/admin/live-feed`, { ttl: 15_000 });
+        // Shared admin data → localStorage.
+        const data = await cachedFetch<any>(`${API}/admin/live-feed`, {
+          ttl: 15_000, storage: "local",
+        });
         setLiveFeed(Array.isArray(data) ? data : []);
       } catch { /* noop */ }
     };
@@ -547,7 +556,7 @@ function AdminContent({ session }: { session: Session }) {
       // Cache map network 2 min per city — re-selecting the same city is instant.
       const payload = await cachedFetch<any>(
         `${API}/admin/maps/network?city_name=${cityName}`,
-        { ttl: 2 * 60_000 },
+        { ttl: 2 * 60_000, storage: "local" },
       );
       setRiders(payload.nodes.filter((n: any) => n.type === 'rider'));
     } catch(e) { console.error(e); }

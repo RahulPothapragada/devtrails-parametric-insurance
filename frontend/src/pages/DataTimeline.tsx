@@ -322,8 +322,9 @@ export default function DataTimeline() {
 
   useEffect(() => {
     // Cities list almost never changes — 10 min cache means city switcher
-    // is instant on return visits.
-    cachedFetch<any>(`${API}/data/cities`, { ttl: 10 * 60_000 })
+    // is instant on return visits. Public data → localStorage so it survives
+    // tab close; a day-later visit still paints the city picker instantly.
+    cachedFetch<any>(`${API}/data/cities`, { ttl: 10 * 60_000, storage: "local" })
       .then(setCities)
       .catch(console.error);
   }, []);
@@ -331,7 +332,10 @@ export default function DataTimeline() {
   const fetchTL = useCallback(() => {
     const url = `${API}/data/timeline/${encodeURIComponent(city)}?scenario=${scenario}`;
     // SWR — paint the prior (city, scenario) timeline instantly, then refresh.
-    const { cached, promise } = swrFetch<TimelineResponse>(url, { maxAge: 5 * 60_000 });
+    // localStorage so revisiting tomorrow still renders the last seen state.
+    const { cached, promise } = swrFetch<TimelineResponse>(url, {
+      maxAge: 5 * 60_000, storage: "local",
+    });
     if (cached) { setTl(cached); setLoading(false); }
     promise
       .then((d) => { setTl(d); setLoading(false); setLastTick(Date.now()); })
