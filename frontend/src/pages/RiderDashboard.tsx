@@ -39,7 +39,7 @@ function RiskCircles({ center, zone }: {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { cn } from '@/lib/utils';
 
-import { API_BASE as API } from '@/lib/api';
+import { API_BASE as API, waitForServer } from '@/lib/api';
 import { clearAuthedCache } from '@/lib/cachedFetch';
 
 // ── Session cache — survives tab switches, cleared on browser close ──
@@ -279,10 +279,32 @@ export default function RiderDashboard() {
 
 
   useEffect(() => {
-    fetch(`${API}/payments/config`)
-      .then(r => r.json())
-      .then(d => setRzpConfig(d))
-      .catch(() => setRzpConfig({ configured: false, key_id: null, mode: 'sandbox' }));
+    // Retry /payments/config across a Render cold start — otherwise a transient
+    // backend outage silently flips the UI to sandbox and the real Razorpay
+    // checkout never loads ("failed to fetch" then stuck in sandbox mode).
+    let cancelled = false;
+    (async () => {
+      const deadline = Date.now() + 3 * 60 * 1000;
+      let lastErr: unknown = null;
+      while (!cancelled && Date.now() < deadline) {
+        try {
+          const res = await fetch(`${API}/payments/config`, { signal: AbortSignal.timeout(10000) });
+          if (res.ok) {
+            const d = await res.json();
+            if (!cancelled) setRzpConfig(d);
+            return;
+          }
+        } catch (e) { lastErr = e; }
+        // Backend probably cold — wait for /health, then retry.
+        const alive = await waitForServer(30_000);
+        if (!alive) await new Promise(r => setTimeout(r, 2000));
+      }
+      if (!cancelled) {
+        console.warn('[payments/config] fell back to sandbox after retries:', lastErr);
+        setRzpConfig({ configured: false, key_id: null, mode: 'sandbox' });
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const [loadingMsg, setLoadingMsg] = useState('Loading your dashboard…');
