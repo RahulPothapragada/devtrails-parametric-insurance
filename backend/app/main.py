@@ -142,11 +142,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow all origins for hackathon demo
+# CORS — allow all origins for hackathon demo.
+# allow_credentials must be False when origins is "*" (CORS spec). The frontend
+# authenticates with Bearer tokens in the Authorization header, not cookies, so
+# credentials mode is not required.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

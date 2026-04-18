@@ -528,7 +528,9 @@ function AdminContent({ session }: { session: Session }) {
         .catch(() => {});
     };
     fetchFeed();
-    const iv = setInterval(fetchFeed, 10000);
+    // Poll every 30s — each live-feed call takes ~2s against Supabase, so 10s
+    // polling caused the dashboard to be in a near-constant loading state.
+    const iv = setInterval(fetchFeed, 30000);
     return () => clearInterval(iv);
   }, []);
 

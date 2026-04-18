@@ -47,29 +47,54 @@ def _claim_status_filter(status: str | None):
 
 @router.get("/stats", response_model=AdminStats)
 async def admin_stats(db: AsyncSession = Depends(get_db)):
+    # event_time is stored as naive timestamp — keep `today` naive so the
+    # comparison matches the column type under asyncpg.
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
-    total_riders = (await db.execute(select(func.count(Rider.id)))).scalar() or 0
-    active_policies = (await db.execute(
-        select(func.count(Policy.id)).where(Policy.status == "active")
-    )).scalar() or 0
-    claims_today = (await db.execute(
-        select(func.count(Claim.id)).where(Claim.event_time >= today)
-    )).scalar() or 0
-    payouts_today = (await db.execute(
-        select(func.coalesce(func.sum(Claim.payout_amount), 0))
-        .where(Claim.event_time >= today, Claim.status.in_(["auto_approved", "approved", "paid"]))
-    )).scalar() or 0
+    # Fold the four scalar aggregates into a single round-trip.
+    # Supabase RTT is the bottleneck here — one SELECT with four scalar
+    # subqueries costs one network hop instead of four.
+    scalars_row = (await db.execute(
+        select(
+            select(func.count(Rider.id)).scalar_subquery().label("total_riders"),
+            select(func.count(Policy.id))
+                .where(Policy.status == "active")
+                .scalar_subquery().label("active_policies"),
+            select(func.count(Claim.id))
+                .where(Claim.event_time >= today)
+                .scalar_subquery().label("claims_today"),
+            select(func.coalesce(func.sum(Claim.payout_amount), 0))
+                .where(Claim.event_time >= today,
+                       Claim.status.in_(["auto_approved", "approved", "paid"]))
+                .scalar_subquery().label("payouts_today"),
+        )
+    )).one()
 
+    # Dedupe breached readings by (trigger_type, city_id) so the admin feed
+    # shows distinct active signals instead of the same reading repeated.
+    # Includes the city name so the UI doesn't have to look it up.
     active_result = await db.execute(
-        select(TriggerReading)
+        select(
+            TriggerReading.trigger_type,
+            TriggerReading.city_id,
+            City.name.label("city_name"),
+            func.max(TriggerReading.value).label("value"),
+            func.max(TriggerReading.timestamp).label("last_seen"),
+        )
+        .join(City, City.id == TriggerReading.city_id, isouter=True)
         .where(TriggerReading.is_breached == True)
-        .order_by(desc(TriggerReading.timestamp))
+        .group_by(TriggerReading.trigger_type, TriggerReading.city_id, City.name)
+        .order_by(desc("last_seen"))
         .limit(10)
     )
     active_triggers = [
-        {"type": r.trigger_type.value, "value": r.value, "city_id": r.city_id}
-        for r in active_result.scalars().all()
+        {
+            "type": r.trigger_type.value,
+            "value": r.value,
+            "city_id": r.city_id,
+            "city": r.city_name,
+        }
+        for r in active_result.all()
     ]
 
     zones_result = await db.execute(
@@ -81,10 +106,10 @@ async def admin_stats(db: AsyncSession = Depends(get_db)):
     ]
 
     return AdminStats(
-        total_riders=total_riders,
-        active_policies=active_policies,
-        total_claims_today=claims_today,
-        total_payouts_today=payouts_today,
+        total_riders=scalars_row.total_riders or 0,
+        active_policies=scalars_row.active_policies or 0,
+        total_claims_today=scalars_row.claims_today or 0,
+        total_payouts_today=float(scalars_row.payouts_today or 0),
         active_triggers=active_triggers,
         zone_risk_summary=zone_risk,
     )
