@@ -11,6 +11,7 @@ import {
 import { cn } from '@/lib/utils';
 
 import { API_BASE as API } from '@/lib/api';
+import { cachedFetch, swrFetch } from '@/lib/cachedFetch';
 const POLL_MS = 15_000;
 const SUSPEND = 0.85;
 const TARGET_HI = 0.70;
@@ -320,17 +321,30 @@ export default function DataTimeline() {
   const [tab, setTab]             = useState<'chart' | 'real' | 'simulated' | 'projection'>('chart');
 
   useEffect(() => {
-    fetch(`${API}/data/cities`).then(r => r.json()).then(setCities).catch(console.error);
+    // Cities list almost never changes — 10 min cache means city switcher
+    // is instant on return visits.
+    cachedFetch<any>(`${API}/data/cities`, { ttl: 10 * 60_000 })
+      .then(setCities)
+      .catch(console.error);
   }, []);
 
   const fetchTL = useCallback(() => {
-    fetch(`${API}/data/timeline/${encodeURIComponent(city)}?scenario=${scenario}`)
-      .then(r => r.json())
-      .then((d: TimelineResponse) => { setTl(d); setLoading(false); setLastTick(Date.now()); })
+    const url = `${API}/data/timeline/${encodeURIComponent(city)}?scenario=${scenario}`;
+    // SWR — paint the prior (city, scenario) timeline instantly, then refresh.
+    const { cached, promise } = swrFetch<TimelineResponse>(url, { maxAge: 5 * 60_000 });
+    if (cached) { setTl(cached); setLoading(false); }
+    promise
+      .then((d) => { setTl(d); setLoading(false); setLastTick(Date.now()); })
       .catch(e => { console.error(e); setLoading(false); });
   }, [city, scenario]);
 
-  useEffect(() => { setLoading(true); fetchTL(); const t = setInterval(fetchTL, POLL_MS); return () => clearInterval(t); }, [fetchTL]);
+  useEffect(() => {
+    // Only show the skeleton if we have no cached data yet for this (city, scenario).
+    setLoading(prev => prev && !tl);
+    fetchTL();
+    const t = setInterval(fetchTL, POLL_MS);
+    return () => clearInterval(t);
+  }, [fetchTL]);
 
   // ── Build chart points ────────────────────────────────────────────────────
   const chartPoints: ChartPoint[] = [];

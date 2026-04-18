@@ -15,6 +15,7 @@ import DataTimeline from './DataTimeline';
 import FraudGraphPage from './FraudGraphPage';
 
 import { API_BASE as API } from '@/lib/api';
+import { swrFetch, cachedFetch, invalidateCache } from '@/lib/cachedFetch';
 
 // ── Types ──
 interface StatsData {
@@ -482,30 +483,37 @@ function AdminContent({ session }: { session: Session }) {
   const [riderRiskFilter, setRiderRiskFilter] = useState<string>('all');
   const [riderKycFilter, setRiderKycFilter] = useState<string>('all');
 
+  const explicitTiers: Record<string, string> = {
+    'Mumbai':'tier_1','Delhi':'tier_1','Bangalore':'tier_1','Chennai':'tier_1','Kolkata':'tier_1',
+    'Pune':'tier_2','Hyderabad':'tier_2','Ahmedabad':'tier_2','Jaipur':'tier_2',
+    'Lucknow':'tier_3','Indore':'tier_3','Patna':'tier_3','Bhopal':'tier_3'
+  };
+
+  const applyActuarial = (data: any) => {
+    const all: CityActuarial[] = data.all_cities || [
+      ...(data.tier_breakdown?.tier_1 || []),
+      ...(data.tier_breakdown?.tier_2 || []),
+      ...(data.tier_breakdown?.tier_3 || []),
+    ];
+    const mapped = all.map(c => ({ ...c, city_tier: explicitTiers[c.city] || c.city_tier }));
+    setActuarial(mapped.sort((a, b) => b.avg_loss_ratio - a.avg_loss_ratio));
+  };
+
   const fetchAll = async () => {
-    setLoading(true);
     setError(null);
+    // SWR — paint cached data instantly, then refresh from network.
+    const statsSWR = swrFetch<any>(`${API}/admin/stats`, { maxAge: 5 * 60_000 });
+    const actuarialSWR = swrFetch<any>(`${API}/admin/actuarial`, { maxAge: 5 * 60_000 });
+
+    if (statsSWR.cached) setStats(statsSWR.cached);
+    if (actuarialSWR.cached) applyActuarial(actuarialSWR.cached);
+    // Only show the spinner when there's nothing cached to render.
+    if (!statsSWR.cached || !actuarialSWR.cached) setLoading(true);
+
     try {
-      const [statsRes, actuarialRes] = await Promise.all([
-        fetch(`${API}/admin/stats`),
-        fetch(`${API}/admin/actuarial`),
-      ]);
-      if (statsRes.ok) setStats(await statsRes.json());
-      if (actuarialRes.ok) {
-        const data = await actuarialRes.json();
-        const all: CityActuarial[] = data.all_cities || [
-          ...(data.tier_breakdown?.tier_1 || []),
-          ...(data.tier_breakdown?.tier_2 || []),
-          ...(data.tier_breakdown?.tier_3 || []),
-        ];
-        const explicitTiers: Record<string, string> = {
-          'Mumbai':'tier_1','Delhi':'tier_1','Bangalore':'tier_1','Chennai':'tier_1','Kolkata':'tier_1',
-          'Pune':'tier_2','Hyderabad':'tier_2','Ahmedabad':'tier_2','Jaipur':'tier_2',
-          'Lucknow':'tier_3','Indore':'tier_3','Patna':'tier_3','Bhopal':'tier_3'
-        };
-        const mapped = all.map(c => ({ ...c, city_tier: explicitTiers[c.city] || c.city_tier }));
-        setActuarial(mapped.sort((a, b) => b.avg_loss_ratio - a.avg_loss_ratio));
-      }
+      const [stats, actuarial] = await Promise.all([statsSWR.promise, actuarialSWR.promise]);
+      setStats(stats);
+      applyActuarial(actuarial);
     } catch (e: any) {
       setError(e.message || 'Failed to connect to the backend API.');
     } finally {
@@ -521,15 +529,14 @@ function AdminContent({ session }: { session: Session }) {
   }, []);
 
   useEffect(() => {
-    const fetchFeed = () => {
-      fetch(`${API}/admin/live-feed`)
-        .then(r => r.json())
-        .then(d => setLiveFeed(Array.isArray(d) ? d : []))
-        .catch(() => {});
+    const fetchFeed = async () => {
+      try {
+        // 15s TTL — feed looks live but we don't hammer the network.
+        const data = await cachedFetch<any>(`${API}/admin/live-feed`, { ttl: 15_000 });
+        setLiveFeed(Array.isArray(data) ? data : []);
+      } catch { /* noop */ }
     };
     fetchFeed();
-    // Poll every 30s — each live-feed call takes ~2s against Supabase, so 10s
-    // polling caused the dashboard to be in a near-constant loading state.
     const iv = setInterval(fetchFeed, 30000);
     return () => clearInterval(iv);
   }, []);
@@ -537,11 +544,12 @@ function AdminContent({ session }: { session: Session }) {
   const loadCityRiders = async (cityName: string) => {
     setSelectedCity(cityName); setLoadingRiders(true);
     try {
-      const res = await fetch(`${API}/admin/maps/network?city_name=${cityName}`);
-      if (res.ok) {
-        const payload = await res.json();
-        setRiders(payload.nodes.filter((n: any) => n.type === 'rider'));
-      }
+      // Cache map network 2 min per city — re-selecting the same city is instant.
+      const payload = await cachedFetch<any>(
+        `${API}/admin/maps/network?city_name=${cityName}`,
+        { ttl: 2 * 60_000 },
+      );
+      setRiders(payload.nodes.filter((n: any) => n.type === 'rider'));
     } catch(e) { console.error(e); }
     finally { setLoadingRiders(false); }
   };
@@ -569,6 +577,11 @@ function AdminContent({ session }: { session: Session }) {
       setAllClaims(prev => prev.map(c =>
         c.id === id ? { ...c, status: verdict } : c
       ));
+      // Reviewing a claim moves money — bust stats/actuarial/live-feed caches
+      // so the next paint reflects the new totals.
+      invalidateCache('/admin/stats');
+      invalidateCache('/admin/actuarial');
+      invalidateCache('/admin/live-feed');
     } catch (e) { console.error(e); }
     finally { setReviewingId(null); }
   };
