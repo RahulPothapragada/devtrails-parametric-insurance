@@ -7,9 +7,11 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.auth import get_current_rider
+from app.core.cache import async_cached, invalidate_namespace
 from app.models.models import Rider, Zone, Policy, City
 from app.schemas.schemas import PolicyCreate, PolicyOut
 from app.services.pricing.pricing_engine import PricingEngine, coverage_triggers_from_premium
+from app.api.routes.riders import invalidate_dashboard_cache
 
 router = APIRouter()
 pricing_engine = PricingEngine()
@@ -60,6 +62,9 @@ async def buy_policy(
     )
     db.add(policy)
     await db.flush()
+    # New policy → bust every rider-scoped cache + admin stats (active_policies count).
+    invalidate_dashboard_cache(rider.id)
+    invalidate_namespace("admin_stats")
     return policy
 
 
@@ -68,6 +73,11 @@ async def get_active_policy(
     rider: Rider = Depends(get_current_rider),
     db: AsyncSession = Depends(get_db),
 ):
+    return await _cached_active(rider, db)
+
+
+@async_cached(namespace="rider_active_policy", ttl=60, key=lambda rider, db: rider.id)
+async def _cached_active(rider: Rider, db: AsyncSession):
     result = await db.execute(
         select(Policy)
         .where(Policy.rider_id == rider.id, Policy.status == "active")
@@ -82,6 +92,11 @@ async def policy_history(
     rider: Rider = Depends(get_current_rider),
     db: AsyncSession = Depends(get_db),
 ):
+    return await _cached_history(rider, db)
+
+
+@async_cached(namespace="rider_policy_history", ttl=60, key=lambda rider, db: rider.id)
+async def _cached_history(rider: Rider, db: AsyncSession):
     result = await db.execute(
         select(Policy).where(Policy.rider_id == rider.id).order_by(Policy.week_start.desc()).limit(20)
     )
@@ -103,6 +118,8 @@ async def cancel_policy(
     policy.status = "cancelled"
     policy.auto_renew = False
     await db.flush()
+    invalidate_dashboard_cache(rider.id)
+    invalidate_namespace("admin_stats")
     return {"message": "Policy cancelled. Coverage has ended.", "policy_id": policy.id}
 
 
@@ -120,4 +137,5 @@ async def toggle_auto_renew(
         raise HTTPException(status_code=404, detail="No active policy found")
     policy.auto_renew = not policy.auto_renew
     await db.flush()
+    invalidate_dashboard_cache(rider.id)
     return {"auto_renew": policy.auto_renew, "policy_id": policy.id}

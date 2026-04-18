@@ -6,6 +6,7 @@ from sqlalchemy import select, func, desc, or_
 from datetime import datetime, timezone
 
 from app.core.database import get_db
+from app.core.cache import async_cached, invalidate_namespace
 from app.models.models import Rider, Policy, Claim, TriggerReading, Zone, City, WeeklyLedger, ClaimStatus
 from app.schemas.schemas import AdminStats, ClaimOut
 import random
@@ -47,6 +48,13 @@ def _claim_status_filter(status: str | None):
 
 @router.get("/stats", response_model=AdminStats)
 async def admin_stats(db: AsyncSession = Depends(get_db)):
+    # 15s TTL — stats are polled every 30s from the dashboard, so one in two
+    # polls hits the DB; the other is served from memory.
+    return await _cached_stats(db)
+
+
+@async_cached(namespace="admin_stats", ttl=15, key=lambda db: "global")
+async def _cached_stats(db: AsyncSession):
     # event_time is stored as naive timestamp — keep `today` naive so the
     # comparison matches the column type under asyncpg.
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -199,7 +207,7 @@ async def review_claim(
         policy_result = await db.execute(select(Policy).where(Policy.id == claim.policy_id))
         policy = policy_result.scalar_one_or_none()
         trigger = claim.trigger_type.value if claim.trigger_type else "rainfall"
-        
+
         if policy and policy.coverage_triggers and trigger in policy.coverage_triggers:
             claim.payout_amount = policy.coverage_triggers[trigger]
         else:
@@ -208,11 +216,28 @@ async def review_claim(
         claim.payout_amount = 0.0
 
     await db.flush()
+
+    # Bust the caches this verdict actually changes:
+    # - admin stats (payouts_today, claims_today buckets)
+    # - admin actuarial (LR/BCR once the payout clears into the ledger)
+    # - fraud summary (status now decided)
+    # - the rider's own dashboard + claims list
+    from app.api.routes.riders import invalidate_dashboard_cache
+    invalidate_namespace("admin_stats")
+    invalidate_namespace("admin_actuarial")
+    invalidate_namespace("admin_actuarial_city")
+    invalidate_namespace("admin_fraud")
+    invalidate_dashboard_cache(claim.rider_id)
     return claim
 
 
 @router.get("/cities")
 async def list_cities(db: AsyncSession = Depends(get_db)):
+    return await _cached_cities(db)
+
+
+@async_cached(namespace="admin_cities", ttl=300, key=lambda db: "global")
+async def _cached_cities(db: AsyncSession):
     result = await db.execute(select(City).order_by(City.name))
     cities = result.scalars().all()
     return [
@@ -245,6 +270,11 @@ async def actuarial_stress_test(db: AsyncSession = Depends(get_db)):
     No DB writes. Pure computation on current 8-week ledger data.
     Scenario: IMD historical worst-case (300mm/6hrs, Mumbai Jul 2024).
     """
+    return await _cached_stress_test(db)
+
+
+@async_cached(namespace="admin_actuarial", ttl=60, key=lambda db: "stress")
+async def _cached_stress_test(db: AsyncSession):
     cities_result = await db.execute(select(City).order_by(City.name))
     cities = cities_result.scalars().all()
 
@@ -312,6 +342,11 @@ async def actuarial_stress_test(db: AsyncSession = Depends(get_db)):
 @router.get("/actuarial/{city_name}")
 async def actuarial_summary(city_name: str, db: AsyncSession = Depends(get_db)):
     """Get actuarial summary for a city — BCR, Loss Ratio, weekly trend, sustainability status."""
+    return await _cached_actuarial_city(city_name, db)
+
+
+@async_cached(namespace="admin_actuarial_city", ttl=60, key=lambda city_name, db: city_name)
+async def _cached_actuarial_city(city_name: str, db: AsyncSession):
     city_result = await db.execute(select(City).where(City.name == city_name))
     city = city_result.scalar_one_or_none()
     if not city:
@@ -385,6 +420,11 @@ async def actuarial_summary(city_name: str, db: AsyncSession = Depends(get_db)):
 @router.get("/actuarial")
 async def all_cities_actuarial(db: AsyncSession = Depends(get_db)):
     """Compare actuarial health across all cities — BCR, Loss Ratio, tier breakdown."""
+    return await _cached_actuarial_all(db)
+
+
+@async_cached(namespace="admin_actuarial", ttl=60, key=lambda db: "all")
+async def _cached_actuarial_all(db: AsyncSession):
     cities_result = await db.execute(select(City).order_by(City.name))
     cities = cities_result.scalars().all()
 
@@ -440,6 +480,14 @@ async def all_cities_actuarial(db: AsyncSession = Depends(get_db)):
 @router.get("/weekly-ledger/{city_name}")
 async def weekly_ledger(city_name: str, weeks: int = 8, db: AsyncSession = Depends(get_db)):
     """Get raw weekly ledger entries for a city."""
+    return await _cached_weekly_ledger(city_name, weeks, db)
+
+
+@async_cached(
+    namespace="admin_weekly_ledger", ttl=60,
+    key=lambda city_name, weeks, db: (city_name, weeks),
+)
+async def _cached_weekly_ledger(city_name: str, weeks: int, db: AsyncSession):
     city_result = await db.execute(select(City).where(City.name == city_name))
     city = city_result.scalar_one_or_none()
     if not city:
@@ -482,6 +530,11 @@ async def weekly_ledger(city_name: str, weeks: int = 8, db: AsyncSession = Depen
 @router.get("/fraud-summary")
 async def fraud_network_summary(db: AsyncSession = Depends(get_db)):
     """Platform-wide fraud summary — real rider anomaly stats for the 9-Wall dashboard."""
+    return await _cached_fraud_summary(db)
+
+
+@async_cached(namespace="admin_fraud", ttl=30, key=lambda db: "global")
+async def _cached_fraud_summary(db: AsyncSession):
     total_riders = (await db.execute(select(func.count(Rider.id)))).scalar() or 0
     suspicious_riders = (await db.execute(
         select(func.count(Rider.id)).where(Rider.is_suspicious == True)

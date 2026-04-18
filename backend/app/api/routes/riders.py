@@ -1,7 +1,6 @@
 """Rider routes — profile, dashboard, update, zones."""
 
 from datetime import datetime, timedelta
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,41 +8,36 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.auth import get_current_rider
+from app.core.cache import async_cached, invalidate, invalidate_prefix
 from app.models.models import Rider, Zone, City, Policy, Claim, RiderActivity
 from app.schemas.schemas import RiderOut, RiderUpdate, RiderDashboard, PolicyOut, ClaimOut, ZoneOut, DailyEarning
 
 router = APIRouter()
 
-# ── In-memory cache ──────────────────────────────────────────────────────────
-# Dashboard data is expensive to fetch (slow DB query on rider_activities).
-# Cache per rider for 5 minutes so judges see instant refreshes.
-_dashboard_cache: dict[int, tuple[RiderDashboard, datetime]] = {}
-_CACHE_TTL = timedelta(minutes=5)
-
-
-def _get_cached(rider_id: int) -> Optional[RiderDashboard]:
-    entry = _dashboard_cache.get(rider_id)
-    if entry and datetime.utcnow() < entry[1]:
-        return entry[0]
-    return None
-
-
-def _set_cached(rider_id: int, data: RiderDashboard) -> None:
-    _dashboard_cache[rider_id] = (data, datetime.utcnow() + _CACHE_TTL)
+# Namespaces for rider-scoped caches. Keep as strings so invalidate_prefix
+# ("rider:42") can target every cache entry for a single rider in one call.
+NS_DASHBOARD = "rider_dashboard"
+NS_ZONES = "zones"
 
 
 def invalidate_dashboard_cache(rider_id: int) -> None:
-    """Call this after any mutation (new claim, policy update, etc.)."""
-    _dashboard_cache.pop(rider_id, None)
+    """Drop every cached entry for this rider — dashboard + claims + policies.
+    Called from any write path that affects what the rider sees on their app.
+    """
+    invalidate(NS_DASHBOARD, rider_id)
+    invalidate("rider_claims", rider_id)
+    invalidate("rider_active_policy", rider_id)
+    invalidate("rider_policy_history", rider_id)
 
 
 @router.get("/me", response_model=RiderDashboard)
 async def rider_dashboard(rider: Rider = Depends(get_current_rider), db: AsyncSession = Depends(get_db)):
-    # Return cached data if fresh
-    cached = _get_cached(rider.id)
-    if cached is not None:
-        return cached
+    # Dashboard is expensive (multi-query with 30-day activity scan). Cache 5 min per rider.
+    return await _build_dashboard(rider, db)
 
+
+@async_cached(namespace=NS_DASHBOARD, ttl=300, key=lambda rider, db: rider.id)
+async def _build_dashboard(rider: Rider, db: AsyncSession) -> RiderDashboard:
     since_7 = datetime.utcnow() - timedelta(days=7)
     since_30 = datetime.utcnow() - timedelta(days=30)
 
@@ -116,7 +110,7 @@ async def rider_dashboard(rider: Rider = Depends(get_current_rider), db: AsyncSe
         "traffic": zone.traffic_risk_score,
     }
 
-    result = RiderDashboard(
+    return RiderDashboard(
         rider=RiderOut.model_validate(rider),
         zone=ZoneOut.model_validate(zone),
         city_name=city.name if city else "",
@@ -130,8 +124,6 @@ async def rider_dashboard(rider: Rider = Depends(get_current_rider), db: AsyncSe
         risk_summary=risk_summary,
         daily_earnings=daily_earnings,
     )
-    _set_cached(rider.id, result)
-    return result
 
 
 @router.patch("/me", response_model=RiderOut)
@@ -149,6 +141,12 @@ async def update_rider(
 
 @router.get("/zones", response_model=list[ZoneOut])
 async def list_zones(city_id: int = None, db: AsyncSession = Depends(get_db)):
+    # Zones rarely change — 5 min TTL keyed by city_id.
+    return await _cached_zones(city_id, db)
+
+
+@async_cached(namespace=NS_ZONES, ttl=300, key=lambda city_id, db: city_id or 0)
+async def _cached_zones(city_id: int | None, db: AsyncSession):
     query = select(Zone)
     if city_id:
         query = query.where(Zone.city_id == city_id)

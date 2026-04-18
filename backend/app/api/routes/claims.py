@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.auth import get_current_rider
+from app.core.cache import async_cached
 from app.models.models import Rider, Claim
 from app.schemas.schemas import ClaimOut
 
@@ -17,6 +18,12 @@ async def list_claims(
     rider: Rider = Depends(get_current_rider),
     db: AsyncSession = Depends(get_db),
 ):
+    # 60s per-rider cache — busted by invalidate_dashboard_cache on claim create/review.
+    return await _cached_list(rider, db)
+
+
+@async_cached(namespace="rider_claims", ttl=60, key=lambda rider, db: rider.id)
+async def _cached_list(rider: Rider, db: AsyncSession):
     result = await db.execute(
         select(Claim)
         .where(Claim.rider_id == rider.id)
