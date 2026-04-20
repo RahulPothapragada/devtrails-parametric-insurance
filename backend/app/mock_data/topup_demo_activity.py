@@ -41,6 +41,9 @@ WEEKLY_BASELINE_BY_CITY = {
     "Pune":    (3_800, 4_200),
     "Lucknow": (3_200, 3_600),
 }
+# Target zone per demo rider — the 3 cities we showcase (tier 1/2/3 spread).
+# Zone IDs: 1=Andheri West (Mumbai), 57=Swargate (Pune), 87=Charbagh (Lucknow).
+DEMO_RIDER_ZONES = {1: 1, 2: 57, 3: 87}
 # Fraction of missing days to treat as working (rest of the days stay ₹0 =
 # naturally-realistic rest days). ~5 of 7 ≈ 0.71 matches gig-work patterns.
 WORK_FRACTION = 0.71
@@ -59,6 +62,35 @@ async def topup(rider_ids: list[int]) -> None:
             return
 
         for rider in riders:
+            # Self-heal: make sure demo riders are on their intended city/zone.
+            # If a prior deploy left them all on Mumbai, relocate + wipe stale
+            # activity so the new city's baseline applies.
+            target_zone_id = DEMO_RIDER_ZONES.get(rider.id)
+            if target_zone_id is not None and rider.zone_id != target_zone_id:
+                z_new = (
+                    await db.execute(select(Zone).where(Zone.id == target_zone_id))
+                ).scalar_one_or_none()
+                c_new = (
+                    await db.execute(select(City).where(City.id == z_new.city_id))
+                ).scalar_one_or_none() if z_new else None
+                if z_new and c_new:
+                    rider.zone_id = target_zone_id
+                    rider.dark_store_id = None
+                    rider.avg_hourly_rate = hourly_rate(
+                        z_new.tier.value,
+                        c_new.city_tier.value if c_new.city_tier else "tier_1",
+                        z_new.area_type.value if z_new.area_type else "urban",
+                    )
+                    # Clear stale activity tied to the old city.
+                    from sqlalchemy import delete as _delete
+                    await db.execute(
+                        _delete(RiderActivity).where(RiderActivity.rider_id == rider.id)
+                    )
+                    print(
+                        f"  ↪ rider {rider.id}: moved to {c_new.name} "
+                        f"(hourly ₹{rider.avg_hourly_rate})"
+                    )
+
             zone = (
                 await db.execute(select(Zone).where(Zone.id == rider.zone_id))
             ).scalar_one_or_none()
