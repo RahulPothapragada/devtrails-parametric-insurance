@@ -32,6 +32,19 @@ from app.core.database import async_session
 from app.models.models import City, Rider, RiderActivity, Zone
 from app.mock_data.seed_db import _activity, hourly_rate
 
+# Demo-calibrated weekly earnings baselines — what the original seeded data
+# showed for each city before drift. If the rolling last-7-day sum (with
+# shortened hours) exceeds this, we trim hours/earnings on the last inserted
+# day so riders don't suddenly "earn more" as time passes.
+WEEKLY_BASELINE_BY_CITY = {
+    "Mumbai":  (5_200, 5_400),
+    "Pune":    (3_800, 4_200),
+    "Lucknow": (3_200, 3_600),
+}
+# Fraction of missing days to treat as working (rest of the days stay ₹0 =
+# naturally-realistic rest days). ~5 of 7 ≈ 0.71 matches gig-work patterns.
+WORK_FRACTION = 0.71
+
 
 async def topup(rider_ids: list[int]) -> None:
     today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -70,20 +83,50 @@ async def topup(rider_ids: list[int]) -> None:
                 (d.date() if hasattr(d, "date") else d) for d in existing_dates
             }
 
-            # Walk the last 30 days; fill every day not already present.
-            # We stop at yesterday — today's activity is typically incomplete
-            # and will be filled by live events / claim_generator.
-            filled = 0
-            for days_ago in range(1, 31):
-                wd = today - timedelta(days=days_ago)
-                if wd.date() in existing_day_set:
-                    continue
+            # Walk the last 30 days; only ~71% of missing days become working
+            # days so rest-day realism is preserved and weekly earnings stay
+            # at the demo baseline (~5.2-5.4k for Mumbai). Stops at yesterday.
+            # Pure-function work/rest pattern: depends only on (rider_id, date),
+            # so repeat runs select the exact same days → idempotent.
+            # Last 7 days: 5 working + 2 rest (positions based on rider_id).
+            # Rest-day offsets from "today" form a deterministic pattern:
+            #   rider 1 rests days {2, 5} ago, rider 2 {3, 6}, rider 3 {1, 4} …
+            rest_offsets = {(rider.id + k) % 7 + 1 for k in (1, 4)}
+            work_recent = [
+                today - timedelta(days=d)
+                for d in range(1, 8)
+                if d not in rest_offsets
+                and (today - timedelta(days=d)).date() not in existing_day_set
+            ]
+            # Older days: work if hash(rider_id, ordinal) passes the fraction.
+            def _is_work_day(rid: int, wd: datetime) -> bool:
+                h = (rid * 2654435761 + wd.toordinal() * 40503) & 0xFFFF
+                return (h / 0xFFFF) < WORK_FRACTION
 
-                rate = hourly_rate(
-                    zone.tier.value,
-                    city.city_tier.value if city and city.city_tier else "tier_1",
-                    zone.area_type.value if zone.area_type else "urban",
-                )
+            work_older = [
+                today - timedelta(days=d)
+                for d in range(8, 31)
+                if _is_work_day(rider.id, today - timedelta(days=d))
+                and (today - timedelta(days=d)).date() not in existing_day_set
+            ]
+            work_days = work_recent + work_older
+
+            rate = hourly_rate(
+                zone.tier.value,
+                city.city_tier.value if city and city.city_tier else "tier_1",
+                zone.area_type.value if zone.area_type else "urban",
+            )
+
+            # Scale each inserted day's earnings so the last-7-day sum
+            # lands inside the city's demo baseline. Compute the scale from
+            # the expected unscaled weekly sum for this rider's shift.
+            baseline_lo, baseline_hi = WEEKLY_BASELINE_BY_CITY.get(
+                city.name if city else "", (4_800, 5_400)
+            )
+            target_weekly = (baseline_lo + baseline_hi) / 2
+
+            filled = 0
+            for wd in work_days:
                 rec = _activity(
                     rider_id=rider.id,
                     work_date=wd,
@@ -91,8 +134,6 @@ async def topup(rider_ids: list[int]) -> None:
                     zone_lng=zone.lng,
                     rate=rate,
                     shift=rider.shift_type or "morning",
-                    # Demo riders are clean — use the clean distribution so
-                    # hours/deliveries look like a normal working day.
                     fraud_type="clean",
                 )
                 db.add(RiderActivity(**rec))
@@ -124,8 +165,33 @@ async def topup(rider_ids: list[int]) -> None:
             last_7 = [a for a in all_activity if a.date >= last_7_cutoff]
 
             rider.active_days_last_30 = len({a.date.date() for a in last_30})
-            weekly = sum(a.earnings for a in last_7) if last_7 else 0.0
-            rider.avg_weekly_earnings = round(float(weekly), 2)
+            weekly_raw = sum(a.earnings for a in last_7) if last_7 else 0.0
+
+            # Clamp to city baseline — scale inserted last-7-day rows so the
+            # rolling weekly sum lands inside [baseline_lo, baseline_hi].
+            if weekly_raw > 0 and not (baseline_lo <= weekly_raw <= baseline_hi):
+                scale = target_weekly / weekly_raw
+                for r_row in (
+                    await db.execute(
+                        select(RiderActivity).where(
+                            RiderActivity.rider_id == rider.id,
+                            RiderActivity.date >= last_7_cutoff,
+                        )
+                    )
+                ).scalars().all():
+                    r_row.earnings = round(float(r_row.earnings) * scale, 2)
+                    r_row.hours_active = max(0.5, round(float(r_row.hours_active) * scale, 1))
+                await db.flush()
+                all_activity = (
+                    await db.execute(
+                        select(RiderActivity.earnings, RiderActivity.date)
+                        .where(RiderActivity.rider_id == rider.id)
+                    )
+                ).all()
+                last_7 = [a for a in all_activity if a.date >= last_7_cutoff]
+                weekly_raw = sum(a.earnings for a in last_7)
+
+            rider.avg_weekly_earnings = round(float(weekly_raw), 2)
             rider.activity_tier = (
                 "high" if rider.active_days_last_30 >= 20
                 else "medium" if rider.active_days_last_30 >= 7
