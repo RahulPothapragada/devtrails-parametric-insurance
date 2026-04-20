@@ -92,12 +92,27 @@ async def _warmup_db():
         await conn.close()
 
 
+async def _topup_demo_riders():
+    """
+    Keep the 3 demo riders' activity fresh on every cold start so the 7-day
+    earnings chart never shows "day off" when real time has drifted past the
+    seed date. Safe to re-run — topup_demo_activity only fills missing days.
+    """
+    try:
+        from app.mock_data.topup_demo_activity import topup
+        await topup([1, 2, 3])
+        print("✅ Demo riders topped up (activity current)")
+    except Exception as e:
+        print(f"⚠️  Demo topup skipped: {e}")
+
+
 async def _init_ml_background():
     """Train ML models in background — server accepts requests immediately.
     5-second delay lets the pool warm up before we run DB queries for training.
     """
     await asyncio.sleep(5)
     asyncio.create_task(_warmup_db())
+    asyncio.create_task(_topup_demo_riders())
     try:
         await ml.async_initialize()
         print("✅ ML models initialized")
